@@ -160,7 +160,11 @@ cython_debug/
 
 # VS Code
 .vscode/
+
+# NeoVim
+.nvimrc
 .vim/
+tags.*
 
 # macOS
 .DS_Store
@@ -172,3 +176,7 @@ uv.lock
 # temp files
 scratch.py
 scc/
+
+# dev environment
+tests/cassettes/
+dev/

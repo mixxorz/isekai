@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.11"
 dependencies = [
     "django>=4.2",
+    "requests>=2.32.5",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -28,10 +29,12 @@ classifiers = [
 dev = [
     "ruff>=0.8.0",
     "pre-commit>=4.0.0",
+    "ipdb>=0.13.13",
 ]
 test = [
     "pytest>=8.0.0",
     "pytest-django>=4.8.0",
+    "pytest-recording>=0.13.0",
 ]
 
 [project.urls]

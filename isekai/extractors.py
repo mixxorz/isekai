@@ -1,0 +1,38 @@
+from typing import Protocol
+
+import requests
+
+from isekai.types import ResourceData
+
+
+class BaseExtractor(Protocol):
+    def extract(self, key) -> ResourceData:
+        return None
+
+
+class HTTPExtractor(BaseExtractor):
+    def extract(self, key) -> ResourceData:
+        if not key.startswith("url:"):
+            return super().extract(key)
+
+        url = key.lstrip("url:")
+
+        response = requests.get(url)
+
+        content_type = response.headers.get("Content-Type", "application/octet-stream")
+        mime_type, _ = content_type.split(";")
+        data_type = self._detect_data_type(mime_type)
+
+        return ResourceData(
+            mime_type=mime_type,
+            data_type=data_type,
+            data=response.text if data_type == "text" else response.content,
+        )
+
+    def _detect_data_type(self, content_type: str) -> str:
+        if content_type.startswith("text/"):
+            return "text"
+        elif "application/json" in content_type:
+            return "text"
+        else:
+            return "blob"

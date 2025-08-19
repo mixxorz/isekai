@@ -12,6 +12,8 @@ class AbstractResource(models.Model):
         LOADED = "loaded", "Loaded"
 
     key = models.CharField(max_length=255, primary_key=True, db_index=True)
+
+    # Data
     mime_type = models.CharField(max_length=100, blank=True)
     data_type = models.CharField(
         max_length=10,
@@ -22,19 +24,21 @@ class AbstractResource(models.Model):
     text_data = models.TextField(
         blank=True,
     )
+
+    # Target
     target_content_type = models.ForeignKey(
         ContentType, on_delete=models.CASCADE, blank=True, null=True
     )
     target_object_id = models.PositiveIntegerField(blank=True, null=True)
     target_object = GenericForeignKey("target_content_type", "target_object_id")
     target_spec = models.JSONField(blank=True, null=True)
+
+    # Audit fields
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
-        blank=True,
+        default=Status.SEEDED,
     )
-
-    # Audit fields for status transitions
     seeded_at = models.DateTimeField(auto_now_add=True, null=True)
     extracted_at = models.DateTimeField(blank=True, null=True)
     mined_at = models.DateTimeField(blank=True, null=True)

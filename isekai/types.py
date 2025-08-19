@@ -3,6 +3,16 @@ from typing import Literal
 
 
 @dataclass
+class BinaryData:
+    """
+    Represents binary data.
+    """
+
+    filename: str
+    data: bytes
+
+
+@dataclass
 class ResourceData:
     """
     Represents the data for a resource.
@@ -10,7 +20,7 @@ class ResourceData:
 
     mime_type: str
     data_type: Literal["text", "blob"]
-    data: str | bytes
+    data: str | BinaryData
 
 
 class TransitionError(Exception):

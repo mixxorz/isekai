@@ -28,7 +28,7 @@ class AbstractResource(models.Model):
         choices=[("text", "Text"), ("blob", "Blob")],
         blank=True,
     )
-    blob_data = models.FileField(upload_to="resources/", blank=True, null=True)
+    blob_data = models.FileField(upload_to="resource_blobs/", blank=True, null=True)
     text_data = models.TextField(
         blank=True,
     )

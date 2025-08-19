@@ -6,7 +6,7 @@ Resource = get_resource_model()
 logger = logging.getLogger(__name__)
 
 
-def extract(verbose=False):
+def extract(verbose: bool = False) -> None:
     """Extracts data from a source."""
     if verbose:
         logger.setLevel(logging.INFO)
@@ -28,10 +28,10 @@ def extract(verbose=False):
             if data:
                 resource.mime_type = data.mime_type
                 resource.data_type = data.data_type
-                if data.data_type == "text":
+                if data.data_type == "text" and isinstance(data.data, str):
                     resource.text_data = data.data
-                elif data.data_type == "blob":
-                    resource.blob_data = data.data
+                elif data.data_type == "blob" and isinstance(data.data, bytes):
+                    resource.blob_data = data.data  # type: ignore[assignment]
 
                 if verbose:
                     logger.info(

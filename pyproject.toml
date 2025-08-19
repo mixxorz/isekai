@@ -31,6 +31,8 @@ dev = [
     "pre-commit>=4.0.0",
     "ipdb>=0.13.13",
     "tox>=4.11.0",
+    "pyright>=1.1.400",
+    "django-types>=0.19.1",
 ]
 test = [
     "freezegun>=1.5.5",
@@ -49,7 +51,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["isekai"]
-
 
 [tool.ruff]
 target-version = "py311"
@@ -80,3 +81,23 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["isekai"]
+
+[tool.pyright]
+include = ["isekai"]
+exclude = [
+    "**/node_modules",
+    "**/__pycache__",
+    "tests",
+    "dev",
+]
+pythonVersion = "3.11"
+pythonPlatform = "All"
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportMissingTypeStubs = false
+reportUnusedImport = true
+reportUnusedVariable = true
+reportDuplicateImport = true
+reportUntypedFunctionDecorator = false
+reportUntypedClassDecorator = false
+reportUnnecessaryTypeIgnoreComment = true

@@ -29,6 +29,10 @@ dev = [
     "ruff>=0.8.0",
     "pre-commit>=4.0.0",
 ]
+test = [
+    "pytest>=8.0.0",
+    "pytest-django>=4.8.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/mixxorz/isekai"
@@ -40,6 +44,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["isekai"]
+
 
 [tool.ruff]
 target-version = "py311"

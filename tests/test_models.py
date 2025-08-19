@@ -18,7 +18,7 @@ class TestAbstractResource:
         resource = ConcreteResource.objects.create(key="test-key")
         assert resource.key == "test-key"
         assert resource.seeded_at is not None
-        assert resource.status == ""
+        assert resource.status == "seeded"
         assert resource.mime_type == ""
         assert resource.data_type == ""
         assert resource.text_data == ""

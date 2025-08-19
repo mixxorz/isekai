@@ -11,3 +11,11 @@ class ResourceData:
     mime_type: str
     data_type: Literal["text", "blob"]
     data: str | bytes
+
+
+class TransitionError(Exception):
+    pass
+
+
+class ExtractionError(Exception):
+    pass

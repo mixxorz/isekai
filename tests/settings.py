@@ -11,6 +11,7 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.auth",
     "isekai",
+    "tests.testapp",
 ]
 
 USE_TZ = True

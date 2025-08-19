@@ -2,13 +2,7 @@ import pytest
 from django.contrib.auth.models import User
 from django.contrib.contenttypes.models import ContentType
 
-from isekai.models import AbstractResource
-
-
-# Create a concrete model for testing
-class ConcreteResource(AbstractResource):
-    class Meta:
-        app_label = "tests"
+from tests.testapp.models import ConcreteResource
 
 
 @pytest.mark.django_db

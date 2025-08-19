@@ -1,6 +1,14 @@
+from typing import TYPE_CHECKING
+
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
+from django.utils import timezone
+
+from isekai.types import TransitionError
+
+if TYPE_CHECKING:
+    from isekai.extractors import BaseExtractor
 
 
 class AbstractResource(models.Model):
@@ -48,6 +56,9 @@ class AbstractResource(models.Model):
     # Error tracking
     last_error = models.TextField(blank=True)
 
+    # Types
+    extractor: "BaseExtractor"
+
     class Meta:
         abstract = True
 
@@ -58,3 +69,15 @@ class AbstractResource(models.Model):
         elif self.data_type == "blob":
             return self.blob_data
         return None
+
+    def transition_to(self, status: Status):
+        """Transition the resource to a new status."""
+
+        if self.status == self.Status.SEEDED and status == self.Status.EXTRACTED:
+            if not self.text_data and not self.blob_data:
+                raise TransitionError("Cannot transition to EXTRACTED without data")
+
+            self.status = status
+            self.extracted_at = timezone.now()
+        else:
+            raise TransitionError(f"Cannot transition from {self.status} to {status}")

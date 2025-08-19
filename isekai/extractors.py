@@ -1,17 +1,17 @@
-from typing import Protocol
+from types import NoneType
 
 import requests
 
 from isekai.types import ResourceData
 
 
-class BaseExtractor(Protocol):
-    def extract(self, key) -> ResourceData:
+class BaseExtractor:
+    def extract(self, key) -> ResourceData | NoneType:
         return None
 
 
 class HTTPExtractor(BaseExtractor):
-    def extract(self, key) -> ResourceData:
+    def extract(self, key) -> ResourceData | NoneType:
         if not key.startswith("url:"):
             return super().extract(key)
 

@@ -1,5 +1,8 @@
 import logging
 
+from django.core.files.base import ContentFile
+
+from isekai.types import BinaryData
 from isekai.utils import get_resource_model
 
 Resource = get_resource_model()
@@ -30,8 +33,12 @@ def extract(verbose: bool = False) -> None:
                 resource.data_type = data.data_type
                 if data.data_type == "text" and isinstance(data.data, str):
                     resource.text_data = data.data
-                elif data.data_type == "blob" and isinstance(data.data, bytes):
-                    resource.blob_data = data.data  # type: ignore[assignment]
+                elif data.data_type == "blob" and isinstance(data.data, BinaryData):
+                    resource.blob_data.save(
+                        data.data.filename,
+                        ContentFile(data.data.data),
+                        save=False,
+                    )
 
                 if verbose:
                     logger.info(

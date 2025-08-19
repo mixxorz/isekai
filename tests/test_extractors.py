@@ -126,7 +126,7 @@ class TestHTTPExtractor:
 @pytest.mark.django_db
 @pytest.mark.vcr
 class TestExtract:
-    def test_extract_loads_data_to_resource(self):
+    def test_extract_loads_text_data_to_resource(self):
         ConcreteResource.objects.create(key="url:https://www.jpl.nasa.gov/")
 
         now = timezone.now()
@@ -140,6 +140,44 @@ class TestExtract:
         assert resource.data_type == "text"
         assert resource.data is not None
         assert "Jet Propulsion Laboratory" in resource.data
+
+        assert resource.status == ConcreteResource.Status.EXTRACTED
+        assert resource.extracted_at == now
+
+    @responses.activate
+    def test_extract_loads_blob_data_to_resource(self):
+        """Test that extract() properly handles binary data extraction and saves to FileField."""
+        # Create a small PNG image (1x1 red pixel)
+        png_data = (
+            b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+            b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x00"
+            b"\x00\x00\x03\x00\x01\x00\x00\x00\x00\x18\xdd\x8d\xb4\x1c\x00\x00"
+            b"\x00\x00IEND\xaeB`\x82"
+        )
+
+        responses.add(
+            responses.GET,
+            "https://example.com/test-image.png",
+            body=png_data,
+            headers={"Content-Type": "image/png"},
+            status=200,
+        )
+
+        ConcreteResource.objects.create(key="url:https://example.com/test-image.png")
+
+        now = timezone.now()
+        with freeze_time(now):
+            extract()
+
+        resource = ConcreteResource.objects.get()
+
+        assert resource.key == "url:https://example.com/test-image.png"
+        assert resource.mime_type == "image/png"
+        assert resource.data_type == "blob"
+        assert "test-image" in resource.blob_data.name
+        assert resource.blob_data.name.endswith(".png")
+        assert resource.blob_data.read() == png_data
+        assert resource.text_data == ""
 
         assert resource.status == ConcreteResource.Status.EXTRACTED
         assert resource.extracted_at == now

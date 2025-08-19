@@ -178,5 +178,4 @@ scratch.py
 scc/
 
 # dev environment
-tests/cassettes/
 dev/

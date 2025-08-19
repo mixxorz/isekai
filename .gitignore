@@ -160,6 +160,7 @@ cython_debug/
 
 # VS Code
 .vscode/
+.vim/
 
 # macOS
 .DS_Store
@@ -167,3 +168,7 @@ cython_debug/
 # uv
 .uv_cache/
 uv.lock
+
+# temp files
+scratch.py
+scc/

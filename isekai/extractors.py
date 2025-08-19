@@ -20,7 +20,7 @@ class HTTPExtractor(BaseExtractor):
         response = requests.get(url)
 
         content_type = response.headers.get("Content-Type", "application/octet-stream")
-        mime_type, _ = content_type.split(";")
+        mime_type = content_type.split(";")[0]
         data_type = self._detect_data_type(mime_type)
 
         return ResourceData(

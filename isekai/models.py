@@ -70,14 +70,22 @@ class AbstractResource(models.Model):
             return self.blob_data
         return None
 
-    def transition_to(self, status: Status):
-        """Transition the resource to a new status."""
+    def transition_to(self, next_status: Status):
+        """Transition the resource to a new status.
 
-        if self.status == self.Status.SEEDED and status == self.Status.EXTRACTED:
+        1. Ensures that only valid transitions are allowed.
+        2. Ensures that the resource is valid for the next status.
+        3. Updates the status and relevant timestamps.
+        """
+
+        if self.status == self.Status.SEEDED and next_status == self.Status.EXTRACTED:
             if not self.text_data and not self.blob_data:
                 raise TransitionError("Cannot transition to EXTRACTED without data")
 
-            self.status = status
+            self.last_error = ""
+            self.status = next_status
             self.extracted_at = timezone.now()
         else:
-            raise TransitionError(f"Cannot transition from {self.status} to {status}")
+            raise TransitionError(
+                f"Cannot transition from {self.status} to {next_status}"
+            )

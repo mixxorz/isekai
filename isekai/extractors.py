@@ -40,7 +40,13 @@ class HTTPExtractor(BaseExtractor):
             filename = self._infer_filename(url, response, mime_type)
             data = BinaryData(filename=filename, data=response.content)
 
-        return ResourceData(mime_type=mime_type, data_type=data_type, data=data)
+        # Create ResourceData with response headers in metadata
+        resource_data = ResourceData(
+            mime_type=mime_type, data_type=data_type, data=data
+        )
+        resource_data.metadata["response_headers"] = dict(response.headers)
+
+        return resource_data
 
     def _detect_data_type(self, content_type: str) -> Literal["text", "blob"]:
         # Check if it's a text MIME type

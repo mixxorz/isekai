@@ -77,6 +77,42 @@ class TestHTTPExtractor:
         assert result.data.data == pdf_data
 
     @responses.activate
+    def test_extract_stores_response_headers_in_metadata(self):
+        """Test that HTTPExtractor stores response headers in metadata."""
+        test_content = "Test content"
+        custom_headers = {
+            "Content-Type": "text/plain",
+            "X-Custom-Header": "custom-value",
+            "Cache-Control": "max-age=3600",
+            "Last-Modified": "Wed, 21 Oct 2023 07:28:00 GMT",
+        }
+
+        responses.add(
+            responses.GET,
+            "https://example.com/test.txt",
+            body=test_content,
+            headers=custom_headers,
+            status=200,
+        )
+
+        extractor = HTTPExtractor()
+        result = extractor.extract("url:https://example.com/test.txt")
+
+        assert result is not None
+        assert result.mime_type == "text/plain"
+        assert result.data_type == "text"
+        assert result.data == test_content
+
+        # Check that metadata contains response headers
+        assert "response_headers" in result.metadata
+
+        response_headers = result.metadata["response_headers"]
+        assert response_headers["Content-Type"] == "text/plain"
+        assert response_headers["X-Custom-Header"] == "custom-value"
+        assert response_headers["Cache-Control"] == "max-age=3600"
+        assert response_headers["Last-Modified"] == "Wed, 21 Oct 2023 07:28:00 GMT"
+
+    @responses.activate
     def test_extract_binary_fallback_to_mime_type_extension(self):
         """Test filename generation from MIME type when no other source available."""
         zip_data = b"PK\x03\x04fake zip content"
@@ -144,6 +180,9 @@ class TestExtract:
         assert resource.status == ConcreteResource.Status.EXTRACTED
         assert resource.extracted_at == now
 
+        assert "response_headers" in resource.metadata
+        assert "Content-Type" in resource.metadata["response_headers"]
+
     @responses.activate
     def test_extract_loads_blob_data_to_resource(self):
         """Test that extract() properly handles binary data extraction and saves to FileField."""
@@ -200,3 +239,47 @@ class TestExtract:
             resource.last_error
             == "TransitionError: Cannot transition to EXTRACTED without data"
         )
+
+    @responses.activate
+    def test_extract_merges_metadata_with_existing_resource_metadata(self):
+        """Test that extract operation merges metadata with existing resource metadata."""
+        test_content = "<html><body>Test</body></html>"
+
+        responses.add(
+            responses.GET,
+            "https://example.com/merge-test.html",
+            body=test_content,
+            headers={"Content-Type": "text/html", "X-Source": "test"},
+            status=200,
+        )
+
+        # Create a resource with existing metadata
+        resource = ConcreteResource.objects.create(
+            key="url:https://example.com/merge-test.html",
+            metadata={
+                "custom_field": "existing_value",
+                "another_field": {"nested": "data"},
+            },
+        )
+        assert resource.status == ConcreteResource.Status.SEEDED
+
+        # Run extract operation
+        extract()
+
+        # Reload resource from database
+        resource.refresh_from_db()
+
+        # Verify resource was extracted successfully
+        assert resource.status == ConcreteResource.Status.EXTRACTED
+
+        # Verify metadata was merged (not replaced)
+        assert "custom_field" in resource.metadata
+        assert resource.metadata["custom_field"] == "existing_value"
+        assert "another_field" in resource.metadata
+        assert resource.metadata["another_field"] == {"nested": "data"}
+
+        # Verify new response_headers were added
+        assert "response_headers" in resource.metadata
+        response_headers = resource.metadata["response_headers"]
+        assert response_headers["Content-Type"] == "text/html"
+        assert response_headers["X-Source"] == "test"

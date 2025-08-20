@@ -33,6 +33,7 @@ class AbstractResource(models.Model):
     text_data = models.TextField(
         blank=True,
     )
+    metadata = models.JSONField(blank=True, null=True)
 
     # Target
     target_content_type = models.ForeignKey(

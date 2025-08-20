@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 
@@ -21,6 +21,7 @@ class ResourceData:
     mime_type: str
     data_type: Literal["text", "blob"]
     data: str | BinaryData
+    metadata: dict = field(default_factory=dict)
 
 
 class TransitionError(Exception):

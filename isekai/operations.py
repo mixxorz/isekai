@@ -76,6 +76,13 @@ def extract(verbose: bool = False) -> None:
             if data:
                 resource.mime_type = data.mime_type
                 resource.data_type = data.data_type
+
+                # Merge metadata
+                if resource.metadata is None:
+                    resource.metadata = {}  # type: ignore[assignment]
+
+                resource.metadata.update(data.metadata)
+
                 if data.data_type == "text" and isinstance(data.data, str):
                     resource.text_data = data.data
                 elif data.data_type == "blob" and isinstance(data.data, BinaryData):
@@ -111,6 +118,7 @@ def extract(verbose: bool = False) -> None:
             "data_type",
             "text_data",
             "blob_data",
+            "metadata",
             "status",
             "extracted_at",
             "last_error",

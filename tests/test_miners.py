@@ -4,7 +4,7 @@ from isekai.types import ResourceData
 
 class TestHTMLImageMiner:
     def test_miner_finds_images(self):
-        miner = HTMLImageMiner()
+        miner = HTMLImageMiner(domain_allowlist=["*"])
 
         key = "url:https://example.com"
         text_data = """
@@ -65,7 +65,7 @@ class TestHTMLImageMiner:
 
     def test_miner_uses_host_header_from_metadata(self):
         """Test that HTMLImageMiner uses Host header from metadata for base URL."""
-        miner = HTMLImageMiner()
+        miner = HTMLImageMiner(domain_allowlist=["*"])
 
         key = "url:https://example.com"
         text_data = """
@@ -97,7 +97,7 @@ class TestHTMLImageMiner:
 
     def test_miner_falls_back_to_url_when_no_host_header(self):
         """Test that HTMLImageMiner falls back to original URL when no Host header."""
-        miner = HTMLImageMiner()
+        miner = HTMLImageMiner(domain_allowlist=["*"])
 
         key = "url:https://example.com"
         text_data = """
@@ -122,7 +122,7 @@ class TestHTMLImageMiner:
 
     def test_miner_handles_non_url_keys(self):
         """Test that HTMLImageMiner handles non-URL keys properly."""
-        miner = HTMLImageMiner()
+        miner = HTMLImageMiner(domain_allowlist=["*"])
 
         # Test with a file: key
         key = "file:/path/to/local/file.html"
@@ -139,15 +139,15 @@ class TestHTMLImageMiner:
 
         keys = miner.mine(key, data)
 
-        # Should return relative URLs as-is when no base URL is available for non-URL keys
-        expected_urls = {"url:images/local-image.jpg", "url:/absolute/path/image.png"}
+        # Should return relative URLs with path: prefix when no base URL is available for non-URL keys
+        expected_urls = {"path:images/local-image.jpg", "path:/absolute/path/image.png"}
 
         assert len(keys) == 2
         assert set(keys) == expected_urls
 
     def test_miner_handles_absolute_urls(self):
         """Test that HTMLImageMiner handles absolute URLs correctly."""
-        miner = HTMLImageMiner()
+        miner = HTMLImageMiner(domain_allowlist=["*"])
 
         key = "url:https://example.com"
         text_data = """
@@ -177,3 +177,63 @@ class TestHTMLImageMiner:
 
         assert len(keys) == 4
         assert set(keys) == expected_urls
+
+    def test_miner_domain_allowlist(self):
+        """Test that HTMLImageMiner filters URLs based on domain allowlist."""
+        miner = HTMLImageMiner(domain_allowlist=["example.com"])
+
+        key = "file:/local/file.html"  # No base URL available
+        text_data = """
+        <html>
+        <body>
+          <img src="relative/path.jpg" alt="Relative">
+          <img src="https://example.com/images/allowed.jpg" alt="Allowed">
+          <img src="https://badsite.com/images/blocked.jpg" alt="Blocked">
+        </body>
+        </html>
+        """
+
+        data = ResourceData(mime_type="text/html", data_type="text", data=text_data)
+
+        keys = miner.mine(key, data)
+
+        # Should return relative URLs with path: prefix and allowed domains with url: prefix
+        expected_urls = {
+            "path:relative/path.jpg",  # Relative URL gets path: prefix
+            "url:https://example.com/images/allowed.jpg",  # Allowed domain gets url: prefix
+        }
+
+        assert len(keys) == 2
+        assert set(keys) == expected_urls
+
+    def test_miner_allows_relative_urls_when_no_allowlist(self):
+        """Test that relative URLs are allowed even when no domain allowlist is specified."""
+        miner = HTMLImageMiner()  # No domain allowlist
+
+        key = "file:/local/file.html"  # No base URL available
+        text_data = """
+        <html>
+        <body>
+          <img src="relative/path.jpg" alt="Relative">
+          <img src="https://example.com/images/blocked.jpg" alt="Blocked">
+        </body>
+        </html>
+        """
+
+        data = ResourceData(mime_type="text/html", data_type="text", data=text_data)
+
+        keys = miner.mine(key, data)
+
+        # Should return only relative URLs with path: prefix, absolute URLs should be blocked
+        expected_urls = {"path:relative/path.jpg"}
+
+        assert len(keys) == 1
+        assert set(keys) == expected_urls
+
+    def test_class_attrs(self):
+        class Miner(HTMLImageMiner):
+            domain_allowlist = ["example.com", "cdn.example.com"]
+
+        miner = Miner()
+
+        assert miner.domain_allowlist == ["example.com", "cdn.example.com"]

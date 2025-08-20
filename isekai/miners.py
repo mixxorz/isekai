@@ -29,7 +29,27 @@ class HTMLImageMiner(BaseMiner):
     1. Host header from response metadata (preserves original scheme)
     2. URL extracted from resource key (for url: keys)
     3. None (relative URLs kept as-is)
+
+    Domain filtering:
+    - Relative URLs without domains are always allowed (assumed local)
+    - If domain_allowlist is empty/None, all domain URLs are denied (default: deny all)
+    - If domain_allowlist contains '*', all URLs are allowed
+    - Otherwise, only URLs from allowed domains are returned
     """
+
+    def __init__(self, domain_allowlist: list[str] | None = None):
+        """
+        Initialize HTMLImageMiner.
+
+        Args:
+            domain_allowlist: Optional list of allowed domains. If empty/None,
+                            all URLs are denied. Use ['*'] to allow all domains.
+        """
+        # Support both constructor parameter and class attribute
+        allowlist = domain_allowlist or getattr(
+            self.__class__, "domain_allowlist", None
+        )
+        self.domain_allowlist = allowlist
 
     def mine(self, key: str, data: ResourceData) -> list[str]:
         keys = super().mine(key, data)
@@ -63,21 +83,37 @@ class HTMLImageMiner(BaseMiner):
                 image_urls.extend(self._parse_srcset(str(srcset)))
 
         # Make URLs absolute if possible, otherwise keep as-is
-        final_urls = []
+        resolved_urls = []
         for url in image_urls:
             # If the URL is already absolute (has scheme), keep it as-is
             parsed_url = urlparse(url)
             if parsed_url.scheme:
-                final_urls.append(url)
+                resolved_urls.append(url)
             # If we don't have a base URL, keep the relative URL as-is
             elif base_url is None:
-                final_urls.append(url)
+                resolved_urls.append(url)
             # Use urljoin to resolve relative URLs against the base URL
             else:
-                final_urls.append(urljoin(base_url, url))
+                resolved_urls.append(urljoin(base_url, url))
 
-        # Convert to resource keys with "url:" prefix
-        return keys + [f"url:{url}" for url in final_urls]
+        # Filter URLs by domain allowlist if specified
+        final_urls = []
+        for url in resolved_urls:
+            if self._is_domain_allowed(url):
+                final_urls.append(url)
+
+        # Convert to resource keys with appropriate prefix
+        resource_keys = []
+        for url in final_urls:
+            parsed_url = urlparse(url)
+            if parsed_url.scheme:
+                # Absolute URL gets "url:" prefix
+                resource_keys.append(f"url:{url}")
+            else:
+                # Relative URL gets "path:" prefix
+                resource_keys.append(f"path:{url}")
+
+        return keys + resource_keys
 
     def _parse_srcset(self, srcset: str) -> list[str]:
         """Parse srcset attribute and extract URLs."""
@@ -113,3 +149,23 @@ class HTMLImageMiner(BaseMiner):
 
         # No base URL available for non-URL keys without Host header
         return None
+
+    def _is_domain_allowed(self, url: str) -> bool:
+        """Check if URL's domain is allowed based on domain_allowlist."""
+        # Parse URL to get the domain
+        parsed_url = urlparse(url)
+
+        # For relative URLs without a domain, always allow them (assume local)
+        if not parsed_url.netloc:
+            return True
+
+        # If no allowlist is specified, deny all domains (but relative URLs already passed)
+        if not self.domain_allowlist:
+            return False
+
+        # If allowlist contains '*', allow all domains
+        if "*" in self.domain_allowlist:
+            return True
+
+        # Check if the domain is in the allowlist
+        return parsed_url.netloc in self.domain_allowlist

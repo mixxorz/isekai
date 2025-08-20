@@ -1,4 +1,5 @@
 from isekai.extractors import HTTPExtractor
+from isekai.miners import HTMLImageMiner
 from isekai.models import AbstractResource
 from isekai.seeders import CSVSeeder, SitemapSeeder
 
@@ -12,6 +13,10 @@ class Seeder(CSVSeeder, SitemapSeeder):
 
 
 class Extractor(HTTPExtractor):
+    pass
+
+
+class Miner(HTMLImageMiner):
     pass
 
 

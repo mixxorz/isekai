@@ -1,0 +1,6 @@
+type,value
+url,https://example.com/data1.csv
+url,https://example.com/page1
+url,https://example.com/image.png
+file,my_files/foo.txt
+json,"{""key"": ""value""}"

@@ -1,28 +1,33 @@
+import pytest
 import responses
+from django.utils import timezone
+from freezegun import freeze_time
 
+from isekai.operations import seed
 from isekai.seeders import CSVSeeder, SitemapSeeder
+from tests.test_extractors import ConcreteResource
 
 
 class TestCSVSeeder:
     def test_csv_seeder(self):
-        seeder = CSVSeeder(filename="tests/files/test_data.csv")
+        seeder = CSVSeeder(csv_filename="tests/files/test_data.csv")
 
         keys = seeder.seed()
 
         assert len(keys) == 5
         assert keys[0] == "url:https://example.com/data1.csv"
-        assert keys[1] == "url:https://example.com/page1"
+        assert keys[1] == "url:https://example.com/csv-page1"
         assert keys[2] == "url:https://example.com/image.png"
         assert keys[3] == "file:my_files/foo.txt"
         assert keys[4] == 'json:{"key": "value"}'
 
     def test_class_attrs(self):
         class Seeder(CSVSeeder):
-            filename = "tests/files/test_data.csv"
+            csv_filename = "tests/files/test_data.csv"
 
         seeder = Seeder()
 
-        assert seeder.filename == "tests/files/test_data.csv"
+        assert seeder.csv_filename == "tests/files/test_data.csv"
 
 
 class TestSitemapSeeder:
@@ -91,3 +96,63 @@ class TestSitemapSeeder:
             "https://example.com/sitemap.xml",
             "https://example.com/jp/sitemap.xml",
         ]
+
+
+@pytest.mark.django_db
+class TestSeed:
+    @responses.activate
+    def test_seed_creates_resources(self):
+        # Mock sitemap responses
+        responses.add(
+            responses.GET,
+            "https://example.com/sitemap.xml",
+            body="""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url><loc>https://example.com/page1</loc></url>
+    <url><loc>https://example.com/page2</loc></url>
+    <url><loc>https://example.com/page3</loc></url>
+    <url><loc>https://example.com/page4</loc></url>
+    <url><loc>https://example.com/page5</loc></url>
+</urlset>""",
+            status=200,
+        )
+
+        responses.add(
+            responses.GET,
+            "https://example.com/jp/sitemap.xml",
+            body="""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url><loc>https://example.com/jp/page1</loc></url>
+    <url><loc>https://example.com/jp/page2</loc></url>
+    <url><loc>https://example.com/jp/page3</loc></url>
+    <url><loc>https://example.com/jp/page4</loc></url>
+    <url><loc>https://example.com/jp/page5</loc></url>
+</urlset>""",
+            status=200,
+        )
+
+        now = timezone.now()
+        with freeze_time(now):
+            seed()
+
+        resources = ConcreteResource.objects.all().order_by("key")
+
+        assert len(resources) == 15
+
+        assert resources[0].key == "file:my_files/foo.txt"
+        assert resources[1].key == 'json:{"key": "value"}'
+        assert resources[2].key == "url:https://example.com/csv-page1"
+        assert resources[3].key == "url:https://example.com/data1.csv"
+        assert resources[4].key == "url:https://example.com/image.png"
+        assert resources[5].key == "url:https://example.com/jp/page1"
+        assert resources[6].key == "url:https://example.com/jp/page2"
+        assert resources[7].key == "url:https://example.com/jp/page3"
+        assert resources[8].key == "url:https://example.com/jp/page4"
+        assert resources[9].key == "url:https://example.com/jp/page5"
+        assert resources[10].key == "url:https://example.com/page1"
+        assert resources[11].key == "url:https://example.com/page2"
+        assert resources[12].key == "url:https://example.com/page3"
+        assert resources[13].key == "url:https://example.com/page4"
+        assert resources[14].key == "url:https://example.com/page5"
+
+        assert all(resource.seeded_at == now for resource in resources)

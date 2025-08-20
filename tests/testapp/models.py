@@ -1,5 +1,14 @@
 from isekai.extractors import HTTPExtractor
 from isekai.models import AbstractResource
+from isekai.seeders import CSVSeeder, SitemapSeeder
+
+
+class Seeder(CSVSeeder, SitemapSeeder):
+    csv_filename = "tests/files/test_data.csv"
+    sitemaps = [
+        "https://example.com/sitemap.xml",
+        "https://example.com/jp/sitemap.xml",
+    ]
 
 
 class Extractor(HTTPExtractor):
@@ -9,6 +18,7 @@ class Extractor(HTTPExtractor):
 class ConcreteResource(AbstractResource):
     """Concrete implementation of AbstractResource for testing."""
 
+    seeder = Seeder()
     extractor = Extractor()
 
     class Meta:

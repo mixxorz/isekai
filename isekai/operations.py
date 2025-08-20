@@ -9,6 +9,37 @@ Resource = get_resource_model()
 logger = logging.getLogger(__name__)
 
 
+def seed(verbose: bool = False) -> None:
+    """Seeds resources from various sources."""
+    if verbose:
+        logger.setLevel(logging.INFO)
+
+    seeder = Resource.seeder
+
+    if verbose:
+        logger.info(f"Using seeder: {seeder.__class__.__name__}")
+
+    keys = seeder.seed()
+
+    if verbose:
+        logger.info(f"Seeding {len(keys)} resources")
+
+    resources = []
+    for key in keys:
+        resources.append(Resource(key=key))
+
+        if verbose:
+            logger.info(f"Seeded resource: {key}")
+
+    if verbose:
+        logger.info("Saving seeded resources to database...")
+
+    Resource.objects.bulk_create(resources)
+
+    if verbose:
+        logger.info(f"Seeding completed: {len(resources)} resources seeded")
+
+
 def extract(verbose: bool = False) -> None:
     """Extracts data from a source."""
     if verbose:

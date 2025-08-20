@@ -19,18 +19,20 @@ class CSVSeeder(BaseSeeder):
     Keys will be formatted as '{type}:{value}'.
     """
 
-    def __init__(self, filename: str | None = None):
-        self.filename = filename or getattr(self.__class__, "filename", None)
-        if self.filename is None:
+    def __init__(self, csv_filename: str | None = None):
+        self.csv_filename = csv_filename or getattr(
+            self.__class__, "csv_filename", None
+        )
+        if self.csv_filename is None:
             raise ValueError(
-                "filename must be provided either as parameter or class attribute"
+                "csv_filename must be provided either as parameter or class attribute"
             )
 
     def seed(self) -> list[str]:
-        keys = []
+        keys = super().seed()
 
-        if self.filename:
-            with open(self.filename) as file:
+        if self.csv_filename:
+            with open(self.csv_filename) as file:
                 reader = csv.DictReader(file)
                 for row in reader:
                     if "type" in row and "value" in row:
@@ -50,7 +52,8 @@ class SitemapSeeder(BaseSeeder):
         self.sitemaps = sitemaps or getattr(self.__class__, "sitemaps", [])
 
     def seed(self) -> list[str]:
-        keys = []
+        keys = super().seed()
+
         for sitemap_url in self.sitemaps:
             response = requests.get(sitemap_url)
             response.raise_for_status()

@@ -9,6 +9,7 @@ from isekai.types import TransitionError
 
 if TYPE_CHECKING:
     from isekai.extractors import BaseExtractor
+    from isekai.seeders import BaseSeeder
 
 
 class AbstractResource(models.Model):
@@ -57,6 +58,7 @@ class AbstractResource(models.Model):
     last_error = models.TextField(blank=True)
 
     # Types
+    seeder: "BaseSeeder"
     extractor: "BaseExtractor"
 
     class Meta:

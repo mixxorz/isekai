@@ -156,3 +156,44 @@ class TestSeed:
         assert resources[14].key == "url:https://example.com/page5"
 
         assert all(resource.seeded_at == now for resource in resources)
+
+    @responses.activate
+    def test_seed_is_idempotent(self):
+        # Mock sitemap responses
+        responses.add(
+            responses.GET,
+            "https://example.com/sitemap.xml",
+            body="""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url><loc>https://example.com/page1</loc></url>
+    <url><loc>https://example.com/page2</loc></url>
+    <url><loc>https://example.com/page3</loc></url>
+    <url><loc>https://example.com/page4</loc></url>
+    <url><loc>https://example.com/page5</loc></url>
+</urlset>""",
+            status=200,
+        )
+
+        responses.add(
+            responses.GET,
+            "https://example.com/jp/sitemap.xml",
+            body="""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url><loc>https://example.com/jp/page1</loc></url>
+    <url><loc>https://example.com/jp/page2</loc></url>
+    <url><loc>https://example.com/jp/page3</loc></url>
+    <url><loc>https://example.com/jp/page4</loc></url>
+    <url><loc>https://example.com/jp/page5</loc></url>
+</urlset>""",
+            status=200,
+        )
+
+        # First seed operation
+        seed()
+        first_count = ConcreteResource.objects.count()
+        assert first_count == 15
+
+        # Second seed operation - should not create duplicates
+        seed()
+        second_count = ConcreteResource.objects.count()
+        assert second_count == 15  # Same count, no new resources

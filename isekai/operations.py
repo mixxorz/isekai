@@ -22,10 +22,24 @@ def seed(verbose: bool = False) -> None:
     keys = seeder.seed()
 
     if verbose:
-        logger.info(f"Seeding {len(keys)} resources")
+        logger.info(f"Found {len(keys)} keys from seeder")
+
+    # Get existing resource keys to avoid duplicates
+    existing_keys = Resource.objects.filter(key__in=keys).values_list("key", flat=True)
+    new_keys = set(keys) - set(existing_keys)
+
+    if verbose:
+        logger.info(
+            f"Existing resources: {len(existing_keys)}, New resources: {len(new_keys)}"
+        )
+
+    if not new_keys:
+        if verbose:
+            logger.info("No new resources to seed")
+        return
 
     resources = []
-    for key in keys:
+    for key in new_keys:
         resources.append(Resource(key=key))
 
         if verbose:

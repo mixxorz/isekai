@@ -4,7 +4,7 @@ from isekai.types import ResourceData
 
 class TestHTMLImageMiner:
     def test_miner_finds_images(self):
-        miner = HTMLImageMiner(domain_allowlist=["*"])
+        miner = HTMLImageMiner(allowed_domains=["*"])
 
         key = "url:https://example.com"
         text_data = """
@@ -65,7 +65,7 @@ class TestHTMLImageMiner:
 
     def test_miner_uses_host_header_from_metadata(self):
         """Test that HTMLImageMiner uses Host header from metadata for base URL."""
-        miner = HTMLImageMiner(domain_allowlist=["*"])
+        miner = HTMLImageMiner(allowed_domains=["*"])
 
         key = "url:https://example.com"
         text_data = """
@@ -97,7 +97,7 @@ class TestHTMLImageMiner:
 
     def test_miner_falls_back_to_url_when_no_host_header(self):
         """Test that HTMLImageMiner falls back to original URL when no Host header."""
-        miner = HTMLImageMiner(domain_allowlist=["*"])
+        miner = HTMLImageMiner(allowed_domains=["*"])
 
         key = "url:https://example.com"
         text_data = """
@@ -122,7 +122,7 @@ class TestHTMLImageMiner:
 
     def test_miner_handles_non_url_keys(self):
         """Test that HTMLImageMiner handles non-URL keys properly."""
-        miner = HTMLImageMiner(domain_allowlist=["*"])
+        miner = HTMLImageMiner(allowed_domains=["*"])
 
         # Test with a file: key
         key = "file:/path/to/local/file.html"
@@ -147,7 +147,7 @@ class TestHTMLImageMiner:
 
     def test_miner_handles_absolute_urls(self):
         """Test that HTMLImageMiner handles absolute URLs correctly."""
-        miner = HTMLImageMiner(domain_allowlist=["*"])
+        miner = HTMLImageMiner(allowed_domains=["*"])
 
         key = "url:https://example.com"
         text_data = """
@@ -179,8 +179,8 @@ class TestHTMLImageMiner:
         assert set(keys) == expected_urls
 
     def test_miner_domain_allowlist(self):
-        """Test that HTMLImageMiner filters URLs based on domain allowlist."""
-        miner = HTMLImageMiner(domain_allowlist=["example.com"])
+        """Test that HTMLImageMiner filters URLs based on allowed_domains."""
+        miner = HTMLImageMiner(allowed_domains=["example.com"])
 
         key = "file:/local/file.html"  # No base URL available
         text_data = """
@@ -207,8 +207,8 @@ class TestHTMLImageMiner:
         assert set(keys) == expected_urls
 
     def test_miner_allows_relative_urls_when_no_allowlist(self):
-        """Test that relative URLs are allowed even when no domain allowlist is specified."""
-        miner = HTMLImageMiner()  # No domain allowlist
+        """Test that relative URLs are allowed even when no allowed_domains is specified."""
+        miner = HTMLImageMiner()  # No allowed_domains
 
         key = "file:/local/file.html"  # No base URL available
         text_data = """
@@ -232,8 +232,8 @@ class TestHTMLImageMiner:
 
     def test_class_attrs(self):
         class Miner(HTMLImageMiner):
-            domain_allowlist = ["example.com", "cdn.example.com"]
+            allowed_domains = ["example.com", "cdn.example.com"]
 
         miner = Miner()
 
-        assert miner.domain_allowlist == ["example.com", "cdn.example.com"]
+        assert miner.allowed_domains == ["example.com", "cdn.example.com"]

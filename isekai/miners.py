@@ -32,24 +32,22 @@ class HTMLImageMiner(BaseMiner):
 
     Domain filtering:
     - Relative URLs without domains are always allowed (assumed local)
-    - If domain_allowlist is empty/None, all domain URLs are denied (default: deny all)
-    - If domain_allowlist contains '*', all URLs are allowed
+    - If allowed_domains is empty/None, all domain URLs are denied (default: deny all)
+    - If allowed_domains contains '*', all URLs are allowed
     - Otherwise, only URLs from allowed domains are returned
     """
 
-    def __init__(self, domain_allowlist: list[str] | None = None):
+    def __init__(self, allowed_domains: list[str] | None = None):
         """
         Initialize HTMLImageMiner.
 
         Args:
-            domain_allowlist: Optional list of allowed domains. If empty/None,
-                            all URLs are denied. Use ['*'] to allow all domains.
+            allowed_domains: Optional list of allowed domains. If empty/None,
+                           all URLs are denied. Use ['*'] to allow all domains.
         """
         # Support both constructor parameter and class attribute
-        allowlist = domain_allowlist or getattr(
-            self.__class__, "domain_allowlist", None
-        )
-        self.domain_allowlist = allowlist
+        domains = allowed_domains or getattr(self.__class__, "allowed_domains", None)
+        self.allowed_domains = domains
 
     def mine(self, key: str, data: ResourceData) -> list[str]:
         keys = super().mine(key, data)
@@ -151,7 +149,7 @@ class HTMLImageMiner(BaseMiner):
         return None
 
     def _is_domain_allowed(self, url: str) -> bool:
-        """Check if URL's domain is allowed based on domain_allowlist."""
+        """Check if URL's domain is allowed based on allowed_domains."""
         # Parse URL to get the domain
         parsed_url = urlparse(url)
 
@@ -159,13 +157,13 @@ class HTMLImageMiner(BaseMiner):
         if not parsed_url.netloc:
             return True
 
-        # If no allowlist is specified, deny all domains (but relative URLs already passed)
-        if not self.domain_allowlist:
+        # If no allowed domains specified, deny all domains (but relative URLs already passed)
+        if not self.allowed_domains:
             return False
 
-        # If allowlist contains '*', allow all domains
-        if "*" in self.domain_allowlist:
+        # If allowed domains contains '*', allow all domains
+        if "*" in self.allowed_domains:
             return True
 
-        # Check if the domain is in the allowlist
-        return parsed_url.netloc in self.domain_allowlist
+        # Check if the domain is in the allowed domains
+        return parsed_url.netloc in self.allowed_domains

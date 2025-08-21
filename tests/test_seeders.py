@@ -12,14 +12,14 @@ class TestCSVSeeder:
     def test_csv_seeder(self):
         seeder = CSVSeeder(csv_filename="tests/files/test_data.csv")
 
-        keys = seeder.seed()
+        seeded_resources = seeder.seed()
 
-        assert len(keys) == 5
-        assert keys[0] == "url:https://example.com/data1.csv"
-        assert keys[1] == "url:https://example.com/csv-page1"
-        assert keys[2] == "url:https://example.com/image.png"
-        assert keys[3] == "file:my_files/foo.txt"
-        assert keys[4] == 'json:{"key": "value"}'
+        assert len(seeded_resources) == 5
+        assert str(seeded_resources[0].key) == "url:https://example.com/data1.csv"
+        assert str(seeded_resources[1].key) == "url:https://example.com/csv-page1"
+        assert str(seeded_resources[2].key) == "url:https://example.com/image.png"
+        assert str(seeded_resources[3].key) == "file:my_files/foo.txt"
+        assert str(seeded_resources[4].key) == 'json:{"key": "value"}'
 
     def test_class_attrs(self):
         class Seeder(CSVSeeder):
@@ -69,19 +69,19 @@ class TestSitemapSeeder:
             ]
         )
 
-        keys = seeder.seed()
+        seeded_resources = seeder.seed()
 
-        assert len(keys) == 10
-        assert keys[0] == "url:https://example.com/page1"
-        assert keys[1] == "url:https://example.com/page2"
-        assert keys[2] == "url:https://example.com/page3"
-        assert keys[3] == "url:https://example.com/page4"
-        assert keys[4] == "url:https://example.com/page5"
-        assert keys[5] == "url:https://example.com/jp/page1"
-        assert keys[6] == "url:https://example.com/jp/page2"
-        assert keys[7] == "url:https://example.com/jp/page3"
-        assert keys[8] == "url:https://example.com/jp/page4"
-        assert keys[9] == "url:https://example.com/jp/page5"
+        assert len(seeded_resources) == 10
+        assert str(seeded_resources[0].key) == "url:https://example.com/page1"
+        assert str(seeded_resources[1].key) == "url:https://example.com/page2"
+        assert str(seeded_resources[2].key) == "url:https://example.com/page3"
+        assert str(seeded_resources[3].key) == "url:https://example.com/page4"
+        assert str(seeded_resources[4].key) == "url:https://example.com/page5"
+        assert str(seeded_resources[5].key) == "url:https://example.com/jp/page1"
+        assert str(seeded_resources[6].key) == "url:https://example.com/jp/page2"
+        assert str(seeded_resources[7].key) == "url:https://example.com/jp/page3"
+        assert str(seeded_resources[8].key) == "url:https://example.com/jp/page4"
+        assert str(seeded_resources[9].key) == "url:https://example.com/jp/page5"
 
     def test_class_attrs(self):
         class Seeder(SitemapSeeder):

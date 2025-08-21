@@ -3,7 +3,7 @@ from django.utils import timezone
 
 from isekai.miners import HTMLImageMiner
 from isekai.operations import mine
-from isekai.types import ResourceData
+from isekai.types import Key, TextResource
 from tests.test_seeders import freeze_time
 from tests.testapp.models import ConcreteResource
 
@@ -12,7 +12,7 @@ class TestHTMLImageMiner:
     def test_miner_finds_images(self):
         miner = HTMLImageMiner(allowed_domains=["*"])
 
-        key = "url:https://example.com"
+        key = Key(type="url", value="https://example.com")
         text_data = """
 <!DOCTYPE html>
 <html lang="en">
@@ -49,31 +49,33 @@ class TestHTMLImageMiner:
 </html>
         """
 
-        # Create ResourceData object
-        data = ResourceData(mime_type="text/html", data_type="text", data=text_data)
+        # Create TextResource object
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
 
-        keys = miner.mine(key, data)
+        mined_resources = miner.mine(key, resource)
 
         # Check that we found all expected URLs (order doesn't matter)
-        expected_urls = {
-            "url:https://example.com/images/cat.jpg",
-            "url:https://example.com/images/dog-small.jpg",
-            "url:https://example.com/images/dog-large.jpg",
-            "url:https://example.com/images/bird-small.jpg",
-            "url:https://example.com/images/bird-large.jpg",
-            "url:https://example.com/images/bird-fallback.jpg",
-            "url:https://example.com/images/flower-hd.jpg",
-            "url:https://example.com/images/flower-default.jpg",
-        }
+        expected_keys = [
+            Key(type="url", value="https://example.com/images/cat.jpg"),
+            Key(type="url", value="https://example.com/images/dog-small.jpg"),
+            Key(type="url", value="https://example.com/images/dog-small.jpg"),
+            Key(type="url", value="https://example.com/images/dog-large.jpg"),
+            Key(type="url", value="https://example.com/images/bird-small.jpg"),
+            Key(type="url", value="https://example.com/images/bird-large.jpg"),
+            Key(type="url", value="https://example.com/images/bird-fallback.jpg"),
+            Key(type="url", value="https://example.com/images/flower-hd.jpg"),
+            Key(type="url", value="https://example.com/images/flower-default.jpg"),
+        ]
 
-        assert len(keys) == 9
-        assert set(keys) == expected_urls
+        assert len(mined_resources) == len(expected_keys)
+        mined_keys = [mr.key for mr in mined_resources]
+        assert sorted(mined_keys, key=str) == sorted(expected_keys, key=str)
 
     def test_miner_uses_host_header_from_metadata(self):
         """Test that HTMLImageMiner uses Host header from metadata for base URL."""
         miner = HTMLImageMiner(allowed_domains=["*"])
 
-        key = "url:https://example.com"
+        key = Key(type="url", value="https://example.com")
         text_data = """
         <html>
         <body>
@@ -83,29 +85,35 @@ class TestHTMLImageMiner:
         </html>
         """
 
-        # Create ResourceData with Host header in metadata
-        data = ResourceData(mime_type="text/html", data_type="text", data=text_data)
-        data.metadata["response_headers"] = {
-            "Host": "cdn.example.com",
-            "Content-Type": "text/html",
-        }
+        # Create TextResource with Host header in metadata
+        resource = TextResource(
+            mime_type="text/html",
+            text=text_data,
+            metadata={
+                "response_headers": {
+                    "Host": "cdn.example.com",
+                    "Content-Type": "text/html",
+                }
+            },
+        )
 
-        keys = miner.mine(key, data)
+        mined_resources = miner.mine(key, resource)
 
         # Should use Host header for base URL construction
-        expected_urls = {
-            "url:https://cdn.example.com/images/logo.png",
-            "url:https://cdn.example.com/assets/icon.svg",
+        expected_keys = {
+            Key(type="url", value="https://cdn.example.com/images/logo.png"),
+            Key(type="url", value="https://cdn.example.com/assets/icon.svg"),
         }
 
-        assert len(keys) == 2
-        assert set(keys) == expected_urls
+        assert len(mined_resources) == 2
+        mined_keys = {mr.key for mr in mined_resources}
+        assert mined_keys == expected_keys
 
     def test_miner_falls_back_to_url_when_no_host_header(self):
         """Test that HTMLImageMiner falls back to original URL when no Host header."""
         miner = HTMLImageMiner(allowed_domains=["*"])
 
-        key = "url:https://example.com"
+        key = Key(type="url", value="https://example.com")
         text_data = """
         <html>
         <body>
@@ -114,24 +122,30 @@ class TestHTMLImageMiner:
         </html>
         """
 
-        # Create ResourceData without Host header in metadata
-        data = ResourceData(mime_type="text/html", data_type="text", data=text_data)
-        data.metadata["response_headers"] = {"Content-Type": "text/html"}
+        # Create TextResource without Host header in metadata
+        resource = TextResource(
+            mime_type="text/html",
+            text=text_data,
+            metadata={"response_headers": {"Content-Type": "text/html"}},
+        )
 
-        keys = miner.mine(key, data)
+        mined_resources = miner.mine(key, resource)
 
         # Should fall back to original URL from key
-        expected_urls = {"url:https://example.com/images/fallback.png"}
+        expected_keys = {
+            Key(type="url", value="https://example.com/images/fallback.png")
+        }
 
-        assert len(keys) == 1
-        assert set(keys) == expected_urls
+        assert len(mined_resources) == 1
+        mined_keys = {mr.key for mr in mined_resources}
+        assert mined_keys == expected_keys
 
     def test_miner_handles_non_url_keys(self):
         """Test that HTMLImageMiner handles non-URL keys properly."""
         miner = HTMLImageMiner(allowed_domains=["*"])
 
         # Test with a file: key
-        key = "file:/path/to/local/file.html"
+        key = Key(type="file", value="/path/to/local/file.html")
         text_data = """
         <html>
         <body>
@@ -141,21 +155,25 @@ class TestHTMLImageMiner:
         </html>
         """
 
-        data = ResourceData(mime_type="text/html", data_type="text", data=text_data)
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
 
-        keys = miner.mine(key, data)
+        mined_resources = miner.mine(key, resource)
 
         # Should return relative URLs with path: prefix when no base URL is available for non-URL keys
-        expected_urls = {"path:images/local-image.jpg", "path:/absolute/path/image.png"}
+        expected_keys = {
+            Key(type="path", value="images/local-image.jpg"),
+            Key(type="path", value="/absolute/path/image.png"),
+        }
 
-        assert len(keys) == 2
-        assert set(keys) == expected_urls
+        assert len(mined_resources) == 2
+        mined_keys = {mr.key for mr in mined_resources}
+        assert mined_keys == expected_keys
 
     def test_miner_handles_absolute_urls(self):
         """Test that HTMLImageMiner handles absolute URLs correctly."""
         miner = HTMLImageMiner(allowed_domains=["*"])
 
-        key = "url:https://example.com"
+        key = Key(type="url", value="https://example.com")
         text_data = """
         <html>
         <body>
@@ -169,26 +187,30 @@ class TestHTMLImageMiner:
         </html>
         """
 
-        data = ResourceData(mime_type="text/html", data_type="text", data=text_data)
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
 
-        keys = miner.mine(key, data)
+        mined_resources = miner.mine(key, resource)
 
         # Should preserve absolute URLs as-is and resolve relative ones
-        expected_urls = {
-            "url:https://example.com/images/relative.jpg",
-            "url:https://cdn.example.com/images/absolute.jpg",
-            "url:http://old.example.com/images/http.jpg",
-            "url:https://static.example.com/images/protocol-relative.jpg",  # Protocol-relative URLs get resolved
+        expected_keys = {
+            Key(type="url", value="https://example.com/images/relative.jpg"),
+            Key(type="url", value="https://cdn.example.com/images/absolute.jpg"),
+            Key(type="url", value="http://old.example.com/images/http.jpg"),
+            Key(
+                type="url",
+                value="https://static.example.com/images/protocol-relative.jpg",
+            ),  # Protocol-relative URLs get resolved
         }
 
-        assert len(keys) == 4
-        assert set(keys) == expected_urls
+        assert len(mined_resources) == 4
+        mined_keys = {mr.key for mr in mined_resources}
+        assert mined_keys == expected_keys
 
     def test_miner_domain_allowlist(self):
         """Test that HTMLImageMiner filters URLs based on allowed_domains."""
         miner = HTMLImageMiner(allowed_domains=["example.com"])
 
-        key = "file:/local/file.html"  # No base URL available
+        key = Key(type="file", value="/local/file.html")  # No base URL available
         text_data = """
         <html>
         <body>
@@ -199,24 +221,29 @@ class TestHTMLImageMiner:
         </html>
         """
 
-        data = ResourceData(mime_type="text/html", data_type="text", data=text_data)
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
 
-        keys = miner.mine(key, data)
+        mined_resources = miner.mine(key, resource)
 
         # Should return relative URLs with path: prefix and allowed domains with url: prefix
-        expected_urls = {
-            "path:relative/path.jpg",  # Relative URL gets path: prefix
-            "url:https://example.com/images/allowed.jpg",  # Allowed domain gets url: prefix
+        expected_keys = {
+            Key(
+                type="path", value="relative/path.jpg"
+            ),  # Relative URL gets path: prefix
+            Key(
+                type="url", value="https://example.com/images/allowed.jpg"
+            ),  # Allowed domain gets url: prefix
         }
 
-        assert len(keys) == 2
-        assert set(keys) == expected_urls
+        assert len(mined_resources) == 2
+        mined_keys = {mr.key for mr in mined_resources}
+        assert mined_keys == expected_keys
 
     def test_miner_allows_relative_urls_when_no_allowlist(self):
         """Test that relative URLs are allowed even when no allowed_domains is specified."""
         miner = HTMLImageMiner()  # No allowed_domains
 
-        key = "file:/local/file.html"  # No base URL available
+        key = Key(type="file", value="/local/file.html")  # No base URL available
         text_data = """
         <html>
         <body>
@@ -226,15 +253,16 @@ class TestHTMLImageMiner:
         </html>
         """
 
-        data = ResourceData(mime_type="text/html", data_type="text", data=text_data)
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
 
-        keys = miner.mine(key, data)
+        mined_resources = miner.mine(key, resource)
 
         # Should return only relative URLs with path: prefix, absolute URLs should be blocked
-        expected_urls = {"path:relative/path.jpg"}
+        expected_keys = {Key(type="path", value="relative/path.jpg")}
 
-        assert len(keys) == 1
-        assert set(keys) == expected_urls
+        assert len(mined_resources) == 1
+        mined_keys = {mr.key for mr in mined_resources}
+        assert mined_keys == expected_keys
 
     def test_class_attrs(self):
         class Miner(HTMLImageMiner):
@@ -329,7 +357,3 @@ class TestMine:
 
         assert original_resource.status == ConcreteResource.Status.MINED
         assert original_resource.mined_at == now
-
-    def test_should_fail_to_transition(self):
-        # TODO: Move this to the test_models perhaps
-        pass

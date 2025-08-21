@@ -3,11 +3,13 @@ from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup, Tag
 
-from isekai.types import ResourceData
+from isekai.types import BlobResource, Key, MinedResource, TextResource
 
 
 class BaseMiner:
-    def mine(self, key: str, data: ResourceData) -> list[str]:
+    def mine(
+        self, key: Key, resource: TextResource | BlobResource
+    ) -> list[MinedResource]:
         return []
 
 
@@ -49,15 +51,17 @@ class HTMLImageMiner(BaseMiner):
         domains = allowed_domains or getattr(self.__class__, "allowed_domains", None)
         self.allowed_domains = domains
 
-    def mine(self, key: str, data: ResourceData) -> list[str]:
-        keys = super().mine(key, data)
+    def mine(
+        self, key: Key, resource: TextResource | BlobResource
+    ) -> list[MinedResource]:
+        mined_resources = super().mine(key, resource)
 
-        # Only process text data
-        if data.data_type != "text" or not isinstance(data.data, str):
+        # Only process text resources
+        if not isinstance(resource, TextResource):
             return []
 
-        base_url = self._determine_base_url(key, data)
-        soup = BeautifulSoup(data.data, "html.parser")
+        base_url = self._determine_base_url(key, resource)
+        soup = BeautifulSoup(resource.text, "html.parser")
         image_urls = []
 
         # Find all <img> tags
@@ -94,24 +98,25 @@ class HTMLImageMiner(BaseMiner):
             else:
                 resolved_urls.append(urljoin(base_url, url))
 
-        # Filter URLs by domain allowlist if specified
+        # Filter URLs by domain allowlist and deduplicate
         final_urls = []
         for url in resolved_urls:
-            if self._is_domain_allowed(url):
+            if self._is_domain_allowed(url) and url:
                 final_urls.append(url)
 
-        # Convert to resource keys with appropriate prefix
-        resource_keys = []
+        # Convert to MinedResource objects with appropriate key prefixes
         for url in final_urls:
             parsed_url = urlparse(url)
             if parsed_url.scheme:
-                # Absolute URL gets "url:" prefix
-                resource_keys.append(f"url:{url}")
+                # Absolute URL gets "url" type
+                mined_key = Key(type="url", value=url)
             else:
-                # Relative URL gets "path:" prefix
-                resource_keys.append(f"path:{url}")
+                # Relative URL gets "path" type
+                mined_key = Key(type="path", value=url)
 
-        return keys + resource_keys
+            mined_resources.append(MinedResource(key=mined_key, metadata={}))
+
+        return mined_resources
 
     def _parse_srcset(self, srcset: str) -> list[str]:
         """Parse srcset attribute and extract URLs."""
@@ -124,16 +129,18 @@ class HTMLImageMiner(BaseMiner):
                 urls.append(url_part)
         return urls
 
-    def _determine_base_url(self, key: str, data: ResourceData) -> str | None:
+    def _determine_base_url(
+        self, key: Key, resource: TextResource | BlobResource
+    ) -> str | None:
         """Determine the best base URL for resolving relative image URLs."""
         # First priority: Host header from response metadata
-        if "response_headers" in data.metadata:
-            response_headers = data.metadata["response_headers"]
+        if "response_headers" in resource.metadata:
+            response_headers = resource.metadata["response_headers"]
             if "Host" in response_headers:
                 host = response_headers["Host"]
                 # If we have a URL key, preserve its scheme
-                if key.startswith("url:"):
-                    original_url = key[4:]
+                if key.type == "url":
+                    original_url = key.value
                     parsed_original = urlparse(original_url)
                     scheme = parsed_original.scheme or "https"
                     return f"{scheme}://{host}"
@@ -142,8 +149,8 @@ class HTMLImageMiner(BaseMiner):
                     return f"https://{host}"
 
         # Second priority: Extract URL from key if it's a URL key
-        if key.startswith("url:"):
-            return key[4:]
+        if key.type == "url":
+            return key.value
 
         # No base URL available for non-URL keys without Host header
         return None

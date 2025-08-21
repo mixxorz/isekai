@@ -5,21 +5,22 @@ from freezegun import freeze_time
 
 from isekai.extractors import HTTPExtractor
 from isekai.operations import extract
-from isekai.types import BinaryData
+from isekai.types import BlobResource, Key, TextResource
 from tests.testapp.models import ConcreteResource
 
 
 class TestHTTPExtractor:
     @pytest.mark.vcr
     def test_extract_returns_resource_data(self):
-        """Test that HTTPExtractor.extract returns expected ResourceData."""
+        """Test that HTTPExtractor.extract returns expected TextResource."""
         extractor = HTTPExtractor()
+        key = Key(type="url", value="https://www.jpl.nasa.gov/")
 
-        result = extractor.extract("url:https://www.jpl.nasa.gov/")
+        result = extractor.extract(key)
 
+        assert isinstance(result, TextResource)
         assert result.mime_type == "text/html"
-        assert result.data_type == "text"
-        assert "Jet Propulsion Laboratory" in result.data
+        assert "Jet Propulsion Laboratory" in result.text
 
     @responses.activate
     def test_extract_binary_content_with_filename_inference(self):
@@ -41,14 +42,16 @@ class TestHTTPExtractor:
         )
 
         extractor = HTTPExtractor()
-        result = extractor.extract("url:https://example.com/images/test-image.png")
+        key = Key(type="url", value="https://example.com/images/test-image.png")
+        result = extractor.extract(key)
 
         assert result is not None
+        assert isinstance(result, BlobResource)
         assert result.mime_type == "image/png"
-        assert result.data_type == "blob"
-        assert isinstance(result.data, BinaryData)
-        assert result.data.filename == "test-image.png"
-        assert result.data.data == png_data
+        assert result.filename == "test-image.png"
+        # Read the temporary file to verify content
+        with open(result.path, "rb") as f:
+            assert f.read() == png_data
 
     @responses.activate
     def test_extract_binary_with_content_disposition_filename(self):
@@ -67,14 +70,16 @@ class TestHTTPExtractor:
         )
 
         extractor = HTTPExtractor()
-        result = extractor.extract("url:https://example.com/download?id=123")
+        key = Key(type="url", value="https://example.com/download?id=123")
+        result = extractor.extract(key)
 
         assert result is not None
+        assert isinstance(result, BlobResource)
         assert result.mime_type == "application/pdf"
-        assert result.data_type == "blob"
-        assert isinstance(result.data, BinaryData)
-        assert result.data.filename == "report.pdf"
-        assert result.data.data == pdf_data
+        assert result.filename == "report.pdf"
+        # Read the temporary file to verify content
+        with open(result.path, "rb") as f:
+            assert f.read() == pdf_data
 
     @responses.activate
     def test_extract_stores_response_headers_in_metadata(self):
@@ -96,12 +101,13 @@ class TestHTTPExtractor:
         )
 
         extractor = HTTPExtractor()
-        result = extractor.extract("url:https://example.com/test.txt")
+        key = Key(type="url", value="https://example.com/test.txt")
+        result = extractor.extract(key)
 
         assert result is not None
+        assert isinstance(result, TextResource)
         assert result.mime_type == "text/plain"
-        assert result.data_type == "text"
-        assert result.data == test_content
+        assert result.text == test_content
 
         # Check that metadata contains response headers
         assert "response_headers" in result.metadata
@@ -126,14 +132,16 @@ class TestHTTPExtractor:
         )
 
         extractor = HTTPExtractor()
-        result = extractor.extract("url:https://example.com/api/export")
+        key = Key(type="url", value="https://example.com/api/export")
+        result = extractor.extract(key)
 
         assert result is not None
+        assert isinstance(result, BlobResource)
         assert result.mime_type == "application/zip"
-        assert result.data_type == "blob"
-        assert isinstance(result.data, BinaryData)
-        assert result.data.filename == "export.zip"
-        assert result.data.data == zip_data
+        assert result.filename == "export.zip"
+        # Read the temporary file to verify content
+        with open(result.path, "rb") as f:
+            assert f.read() == zip_data
 
     @responses.activate
     def test_extract_binary_uses_path_segment_as_base_filename(self):
@@ -149,14 +157,16 @@ class TestHTTPExtractor:
         )
 
         extractor = HTTPExtractor()
-        result = extractor.extract("url:https://example.com/downloads/my-project-v2")
+        key = Key(type="url", value="https://example.com/downloads/my-project-v2")
+        result = extractor.extract(key)
 
         assert result is not None
+        assert isinstance(result, BlobResource)
         assert result.mime_type == "application/zip"
-        assert result.data_type == "blob"
-        assert isinstance(result.data, BinaryData)
-        assert result.data.filename == "my-project-v2.zip"
-        assert result.data.data == zip_data
+        assert result.filename == "my-project-v2.zip"
+        # Read the temporary file to verify content
+        with open(result.path, "rb") as f:
+            assert f.read() == zip_data
 
 
 @pytest.mark.django_db

@@ -1,9 +1,11 @@
 import logging
+import tempfile
+from pathlib import Path
 from typing import cast
 
 from django.core.files.base import ContentFile
 
-from isekai.types import BinaryData, ResourceData
+from isekai.types import BlobResource, Key, TextResource
 from isekai.utils import get_resource_model
 
 Resource = get_resource_model()
@@ -20,32 +22,45 @@ def seed(verbose: bool = False) -> None:
     if verbose:
         logger.info(f"Using seeder: {seeder.__class__.__name__}")
 
-    keys = seeder.seed()
+    seeded_resources = seeder.seed()
 
     if verbose:
-        logger.info(f"Found {len(keys)} keys from seeder")
+        logger.info(f"Found {len(seeded_resources)} resources from seeder")
+
+    # Extract key strings for database lookup
+    key_strings = [str(sr.key) for sr in seeded_resources]
 
     # Get existing resource keys to avoid duplicates
     # TODO: Optimize using `bulk_create` with `ignore_conflicts=True`
-    existing_keys = Resource.objects.filter(key__in=keys).values_list("key", flat=True)
-    new_keys = set(keys) - set(existing_keys)
+    existing_keys = set(
+        Resource.objects.filter(key__in=key_strings).values_list("key", flat=True)
+    )
+
+    # Filter out existing resources
+    new_seeded_resources = [
+        sr for sr in seeded_resources if str(sr.key) not in existing_keys
+    ]
 
     if verbose:
         logger.info(
-            f"Existing resources: {len(existing_keys)}, New resources: {len(new_keys)}"
+            f"Existing resources: {len(existing_keys)}, New resources: {len(new_seeded_resources)}"
         )
 
-    if not new_keys:
+    if not new_seeded_resources:
         if verbose:
             logger.info("No new resources to seed")
         return
 
     resources = []
-    for key in new_keys:
-        resources.append(Resource(key=key))
+    for seeded_resource in new_seeded_resources:
+        resource = Resource(
+            key=str(seeded_resource.key),
+            metadata=seeded_resource.metadata or None,
+        )
+        resources.append(resource)
 
         if verbose:
-            logger.info(f"Seeded resource: {key}")
+            logger.info(f"Seeded resource: {seeded_resource.key}")
 
     if verbose:
         logger.info("Saving seeded resources to database...")
@@ -73,31 +88,42 @@ def extract(verbose: bool = False) -> None:
             logger.info(f"Processing resource: {resource.key}")
 
         try:
-            data = extractor.extract(resource.key)
+            key = Key.from_string(resource.key)
+            extracted_data = extractor.extract(key)
 
-            if data:
-                resource.mime_type = data.mime_type
-                resource.data_type = data.data_type
+            if extracted_data:
+                resource.mime_type = extracted_data.mime_type
 
                 # Merge metadata
                 if resource.metadata is None:
                     resource.metadata = {}  # type: ignore[assignment]
 
-                resource.metadata.update(data.metadata)
+                resource.metadata.update(dict(extracted_data.metadata))
 
-                if data.data_type == "text" and isinstance(data.data, str):
-                    resource.text_data = data.data
-                elif data.data_type == "blob" and isinstance(data.data, BinaryData):
-                    resource.blob_data.save(
-                        data.data.filename,
-                        ContentFile(data.data.data),
-                        save=False,
-                    )
+                if isinstance(extracted_data, TextResource):
+                    resource.data_type = "text"
+                    resource.text_data = extracted_data.text
 
-                if verbose:
-                    logger.info(
-                        f"Extracted {data.data_type} data ({data.mime_type}) for {resource.key}"
-                    )
+                    if verbose:
+                        logger.info(
+                            f"Extracted text data ({extracted_data.mime_type}) for {resource.key}"
+                        )
+                elif isinstance(extracted_data, BlobResource):
+                    resource.data_type = "blob"
+                    # Read the temporary file and save it to the model's FileField
+                    with open(extracted_data.path, "rb") as temp_file:
+                        resource.blob_data.save(
+                            extracted_data.filename,
+                            ContentFile(temp_file.read()),
+                            save=False,
+                        )
+                    # Clean up the temporary file
+                    extracted_data.path.unlink(missing_ok=True)
+
+                    if verbose:
+                        logger.info(
+                            f"Extracted blob data ({extracted_data.mime_type}) for {resource.key}"
+                        )
 
             resource.transition_to(Resource.Status.EXTRACTED)
 
@@ -152,40 +178,58 @@ def mine(verbose: bool = False) -> None:
     for resource in resources:
         if verbose:
             logger.info(f"Mining resource: {resource.key}")
-        resource_data = (
-            cast(str, resource.data)
-            if resource.data_type == "text"
-            else BinaryData(
-                filename=resource.blob_data.name,
-                # TODO: Handle large files more efficiently, e.g. by passing a
-                # file-like object instead
-                data=resource.blob_data.read(),
+
+        # Create appropriate resource object for mining
+        key = Key.from_string(resource.key)
+        if resource.data_type == "text":
+            resource_obj = TextResource(
+                mime_type=resource.mime_type,
+                text=cast(str, resource.text_data),
+                metadata=resource.metadata or {},
             )
-        )
+        else:
+            # For blob data, create a temporary file
+            temp_file = tempfile.NamedTemporaryFile(delete=False)
+            temp_file.write(resource.blob_data.read())
+            temp_file.close()
+
+            resource_obj = BlobResource(
+                mime_type=resource.mime_type,
+                filename=resource.blob_data.name,
+                path=Path(temp_file.name),
+                metadata=resource.metadata or {},
+            )
 
         # Mine the resource
-        keys = miner.mine(
-            resource.key,
-            ResourceData(
-                mime_type=resource.mime_type,
-                data_type=resource.data_type,
-                data=resource_data,
-                metadata=resource.metadata or {},
-            ),
-        )
+        mined_resources = miner.mine(key, resource_obj)
 
         if verbose:
-            logger.info(f"Discovered {len(keys)} new resources from {resource.key}")
+            logger.info(
+                f"Discovered {len(mined_resources)} new resources from {resource.key}"
+            )
 
-        mined_resources = [Resource(key=key) for key in keys]
+        # Extract key strings for database operations
+        mined_key_strings = [str(mr.key) for mr in mined_resources]
+
+        # Create Resource objects for new keys
+        new_django_resources = [
+            Resource(
+                key=str(mr.key), metadata=dict(mr.metadata) if mr.metadata else None
+            )
+            for mr in mined_resources
+        ]
 
         # Create resources that don't already exist
-        Resource.objects.bulk_create(mined_resources, ignore_conflicts=True)
+        Resource.objects.bulk_create(new_django_resources, ignore_conflicts=True)
 
         # Update the original resource that was mined
-        resource.dependencies.set(keys)
+        resource.dependencies.set(mined_key_strings)
         resource.transition_to(Resource.Status.MINED)
         resource.save()
+
+        # Clean up temporary file if it was a blob resource
+        if isinstance(resource_obj, BlobResource):
+            resource_obj.path.unlink(missing_ok=True)
 
         if verbose:
             logger.info(f"Successfully mined: {resource.key}")

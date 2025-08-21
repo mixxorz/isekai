@@ -1,12 +1,13 @@
 import mimetypes
 import re
-from types import NoneType
+import tempfile
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
 import requests
 
-from isekai.types import BinaryData, ResourceData
+from isekai.types import BlobResource, Key, TextResource
 
 # Text MIME types that should be treated as text data
 TEXT_MIME_TYPES = {
@@ -17,16 +18,16 @@ TEXT_MIME_TYPES = {
 
 
 class BaseExtractor:
-    def extract(self, key: str) -> ResourceData | NoneType:
+    def extract(self, key: Key) -> TextResource | BlobResource | None:
         return None
 
 
 class HTTPExtractor(BaseExtractor):
-    def extract(self, key: str) -> ResourceData | NoneType:
-        if not key.startswith("url:"):
+    def extract(self, key: Key) -> TextResource | BlobResource | None:
+        if key.type != "url":
             return super().extract(key)
 
-        url = key.lstrip("url:")
+        url = key.value
 
         response = requests.get(url)
 
@@ -34,19 +35,26 @@ class HTTPExtractor(BaseExtractor):
         mime_type = content_type.split(";")[0]
         data_type = self._detect_data_type(mime_type)
 
+        # Create metadata with response headers
+        metadata = {"response_headers": dict(response.headers)}
+
         if data_type == "text":
-            data = response.text
+            return TextResource(
+                mime_type=mime_type, text=response.text, metadata=metadata
+            )
         else:
             filename = self._infer_filename(url, response, mime_type)
-            data = BinaryData(filename=filename, data=response.content)
+            # Create a temporary file to store the blob data
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=f"_{filename}")
+            temp_file.write(response.content)
+            temp_file.close()
 
-        # Create ResourceData with response headers in metadata
-        resource_data = ResourceData(
-            mime_type=mime_type, data_type=data_type, data=data
-        )
-        resource_data.metadata["response_headers"] = dict(response.headers)
-
-        return resource_data
+            return BlobResource(
+                mime_type=mime_type,
+                filename=filename,
+                path=Path(temp_file.name),
+                metadata=metadata,
+            )
 
     def _detect_data_type(self, content_type: str) -> Literal["text", "blob"]:
         # Check if it's a text MIME type

@@ -3,9 +3,11 @@ from xml.etree import ElementTree as ET
 
 import requests
 
+from isekai.types import Key, SeededResource
+
 
 class BaseSeeder:
-    def seed(self) -> list[str]:
+    def seed(self) -> list[SeededResource]:
         return []
 
 
@@ -28,17 +30,18 @@ class CSVSeeder(BaseSeeder):
                 "csv_filename must be provided either as parameter or class attribute"
             )
 
-    def seed(self) -> list[str]:
-        keys = super().seed()
+    def seed(self) -> list[SeededResource]:
+        resources = super().seed()
 
         if self.csv_filename:
             with open(self.csv_filename) as file:
                 reader = csv.DictReader(file)
                 for row in reader:
                     if "type" in row and "value" in row:
-                        keys.append(f"{row['type']}:{row['value']}")
+                        key = Key(type=row["type"], value=row["value"])
+                        resources.append(SeededResource(key=key, metadata={}))
 
-        return keys
+        return resources
 
 
 class SitemapSeeder(BaseSeeder):
@@ -51,8 +54,8 @@ class SitemapSeeder(BaseSeeder):
     def __init__(self, sitemaps: list[str] | None = None):
         self.sitemaps = sitemaps or getattr(self.__class__, "sitemaps", [])
 
-    def seed(self) -> list[str]:
-        keys = super().seed()
+    def seed(self) -> list[SeededResource]:
+        resources = super().seed()
 
         for sitemap_url in self.sitemaps:
             response = requests.get(sitemap_url)
@@ -65,6 +68,7 @@ class SitemapSeeder(BaseSeeder):
             for url_elem in root.findall("sitemap:url", namespaces):
                 loc_elem = url_elem.find("sitemap:loc", namespaces)
                 if loc_elem is not None and loc_elem.text:
-                    keys.append(f"url:{loc_elem.text}")
+                    key = Key(type="url", value=loc_elem.text)
+                    resources.append(SeededResource(key=key, metadata={}))
 
-        return keys
+        return resources

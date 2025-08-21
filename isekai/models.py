@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -23,7 +23,7 @@ class AbstractResource(models.Model):
 
     # Data
     mime_type = models.CharField(max_length=100, blank=True)
-    data_type = models.CharField(
+    data_type: Literal["text", "blob"] = models.CharField(  # type: ignore[assignment]
         max_length=10,
         choices=[("text", "Text"), ("blob", "Blob")],
         blank=True,
@@ -69,10 +69,6 @@ class AbstractResource(models.Model):
     seeder = BaseSeeder()
     extractor = BaseExtractor()
     miner = BaseMiner()
-
-    # Type checking
-    if TYPE_CHECKING:
-        data_type: Literal["text", "blob"]
 
     class Meta:
         abstract = True

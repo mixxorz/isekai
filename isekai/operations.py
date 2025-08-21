@@ -137,12 +137,21 @@ def extract(verbose: bool = False) -> None:
         )
 
 
-def mine(verbose=False):
+def mine(verbose: bool = False) -> None:
+    """Mines extracted resources to discover new resources."""
+    if verbose:
+        logger.setLevel(logging.INFO)
+
     miner = Resource.miner
 
     resources = Resource.objects.filter(status=Resource.Status.EXTRACTED)
 
+    if verbose:
+        logger.info(f"Found {resources.count()} extracted resources to process")
+
     for resource in resources:
+        if verbose:
+            logger.info(f"Mining resource: {resource.key}")
         resource_data = (
             cast(str, resource.data)
             if resource.data_type == "text"
@@ -164,6 +173,10 @@ def mine(verbose=False):
                 metadata=resource.metadata or {},
             ),
         )
+
+        if verbose:
+            logger.info(f"Discovered {len(keys)} new resources from {resource.key}")
+
         mined_resources = [Resource(key=key) for key in keys]
 
         # Create resources that don't already exist
@@ -173,3 +186,10 @@ def mine(verbose=False):
         resource.dependencies.set(keys)
         resource.transition_to(Resource.Status.MINED)
         resource.save()
+
+        if verbose:
+            logger.info(f"Successfully mined: {resource.key}")
+
+    if verbose:
+        mined_count = len(resources)
+        logger.info(f"Mining completed: {mined_count} resources processed")

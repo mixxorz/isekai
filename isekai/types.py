@@ -100,6 +100,51 @@ class Spec:
     content_type: str
     attributes: Mapping[str, Any]
 
+    def to_dict(self):
+        def serialize_value(value):
+            if isinstance(value, Ref | BlobRef):
+                return str(value)
+            elif isinstance(value, dict):
+                return {k: serialize_value(v) for k, v in value.items()}
+            elif isinstance(value, list | tuple):
+                return [serialize_value(v) for v in value]
+            return value
+
+        return {
+            "content_type": self.content_type,
+            "attributes": {
+                key: serialize_value(value) for key, value in self.attributes.items()
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        def deserialize_value(value):
+            if isinstance(value, str):
+                # Try to parse as BlobRef first, then Ref
+                try:
+                    if value.startswith("isekai-blob-ref:\\"):
+                        return BlobRef.from_string(value)
+                    elif value.startswith("isekai-ref:\\"):
+                        return Ref.from_string(value)
+                except ValueError:
+                    pass
+                # If parsing fails or doesn't match patterns, return as string
+                return value
+            elif isinstance(value, dict):
+                return {k: deserialize_value(v) for k, v in value.items()}
+            elif isinstance(value, list | tuple):
+                return [deserialize_value(v) for v in value]
+            return value
+
+        return cls(
+            content_type=data["content_type"],
+            attributes={
+                key: deserialize_value(value)
+                for key, value in data["attributes"].items()
+            },
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class Ref:
@@ -147,5 +192,9 @@ class TransitionError(Exception):
     pass
 
 
-class ExtractionError(Exception):
+class ExtractError(Exception):
+    pass
+
+
+class TransformError(Exception):
     pass

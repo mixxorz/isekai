@@ -91,9 +91,9 @@ class TestHTMLImageMiner:
 
         for url, expected_alt in expected_alt_texts.items():
             resource = mined_by_url[url]
-            assert (
-                resource.metadata.get("alt_text") == expected_alt
-            ), f"Alt text mismatch for {url}"
+            assert resource.metadata.get("alt_text") == expected_alt, (
+                f"Alt text mismatch for {url}"
+            )
 
     def test_miner_uses_host_header_from_metadata(self):
         """Test that HTMLImageMiner uses Host header from metadata for base URL."""
@@ -377,12 +377,12 @@ class TestMine:
 
         for resource_key, expected_alt in expected_alt_texts.items():
             resource = resources_by_key[resource_key]
-            assert (
-                resource.metadata is not None
-            ), f"Metadata should not be None for {resource_key}"
-            assert (
-                resource.metadata.get("alt_text") == expected_alt
-            ), f"Alt text mismatch for {resource_key}"
+            assert resource.metadata is not None, (
+                f"Metadata should not be None for {resource_key}"
+            )
+            assert resource.metadata.get("alt_text") == expected_alt, (
+                f"Alt text mismatch for {resource_key}"
+            )
 
         # Check original resource is updated
         original_resource.refresh_from_db()

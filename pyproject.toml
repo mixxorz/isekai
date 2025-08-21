@@ -28,7 +28,7 @@ classifiers = [
 
 [dependency-groups]
 dev = [
-    "ruff>=0.8.0",
+    "ruff==0.12.9",
     "pre-commit>=4.0.0",
     "ipdb>=0.13.13",
     "tox>=4.11.0",

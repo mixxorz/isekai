@@ -62,59 +62,65 @@ class HTMLImageMiner(BaseMiner):
 
         base_url = self._determine_base_url(key, resource)
         soup = BeautifulSoup(resource.text, "html.parser")
-        image_urls = []
+        image_data = []  # List of (url, alt_text) tuples
 
         # Find all <img> tags
         for img in soup.find_all("img"):
             img_tag = cast(Tag, img)
+            alt_text = img_tag.get("alt", "")
+
             # Handle src attribute
             src = img_tag.get("src")
             if src:
-                image_urls.append(str(src))
+                image_data.append((str(src), str(alt_text)))
 
             # Handle srcset attribute
             srcset = img_tag.get("srcset")
             if srcset:
-                image_urls.extend(self._parse_srcset(str(srcset)))
+                for url in self._parse_srcset(str(srcset)):
+                    image_data.append((url, str(alt_text)))
 
-        # Find all <source> tags (inside <picture> elements)
-        for source in soup.find_all("source"):
-            source_tag = cast(Tag, source)
-            srcset = source_tag.get("srcset")
-            if srcset:
-                image_urls.extend(self._parse_srcset(str(srcset)))
+        # Find all <source> tags inside <picture> elements
+        for picture in soup.find_all("picture"):
+            for source in picture.find_all("source"):
+                source_tag = cast(Tag, source)
+                srcset = source_tag.get("srcset")
+                if srcset:
+                    # Source tags don't have alt text - that's only for img tags
+                    for url in self._parse_srcset(str(srcset)):
+                        image_data.append((url, ""))
 
-        # Make URLs absolute if possible, otherwise keep as-is
-        resolved_urls = []
-        for url in image_urls:
-            # If the URL is already absolute (has scheme), keep it as-is
+        # Make URLs absolute and create MinedResource objects
+        for url, alt_text in image_data:
+            # Make URL absolute if possible
             parsed_url = urlparse(url)
             if parsed_url.scheme:
-                resolved_urls.append(url)
-            # If we don't have a base URL, keep the relative URL as-is
+                # Already absolute
+                resolved_url = url
             elif base_url is None:
-                resolved_urls.append(url)
-            # Use urljoin to resolve relative URLs against the base URL
+                # Keep relative URL as-is
+                resolved_url = url
             else:
-                resolved_urls.append(urljoin(base_url, url))
+                # Use urljoin to resolve relative URLs against the base URL
+                resolved_url = urljoin(base_url, url)
 
-        # Filter URLs by domain allowlist and deduplicate
-        final_urls = []
-        for url in resolved_urls:
-            if self._is_domain_allowed(url) and url:
-                final_urls.append(url)
+            # Filter by domain allowlist
+            if self._is_domain_allowed(resolved_url) and resolved_url:
+                # Create appropriate key
+                parsed_resolved = urlparse(resolved_url)
+                if parsed_resolved.scheme:
+                    # Absolute URL gets "url" type
+                    mined_key = Key(type="url", value=resolved_url)
+                else:
+                    # Relative URL gets "path" type
+                    mined_key = Key(type="path", value=resolved_url)
 
-        # Convert to MinedResource objects with appropriate key prefixes
-        for url in final_urls:
-            parsed_url = urlparse(url)
-            if parsed_url.scheme:
-                # Absolute URL gets "url" type
-                mined_key = Key(type="url", value=url)
-            else:
-                # Relative URL gets "path" type
-                mined_key = Key(type="path", value=url)
+                # Create metadata with alt text
+                metadata = {}
+                if alt_text:
+                    metadata["alt_text"] = alt_text
 
-            mined_resources.append(MinedResource(key=mined_key, metadata={}))
+                mined_resources.append(MinedResource(key=mined_key, metadata=metadata))
 
         return mined_resources
 

@@ -9,6 +9,14 @@ from tests.testapp.models import ConcreteResource
 
 
 class TestHTMLImageMiner:
+    def test_class_attrs(self):
+        class Miner(HTMLImageMiner):
+            allowed_domains = ["example.com", "cdn.example.com"]
+
+        miner = Miner()
+
+        assert miner.allowed_domains == ["example.com", "cdn.example.com"]
+
     def test_miner_finds_images(self):
         miner = HTMLImageMiner(allowed_domains=["*"])
 
@@ -70,6 +78,22 @@ class TestHTMLImageMiner:
         assert len(mined_resources) == len(expected_keys)
         mined_keys = [mr.key for mr in mined_resources]
         assert sorted(mined_keys, key=str) == sorted(expected_keys, key=str)
+
+        # Check that alt text is saved in metadata
+        mined_by_url = {str(mr.key): mr for mr in mined_resources}
+
+        expected_alt_texts = {
+            "url:https://example.com/images/cat.jpg": "Cat",
+            "url:https://example.com/images/dog-small.jpg": "Dog",
+            "url:https://example.com/images/bird-fallback.jpg": "Bird",
+            "url:https://example.com/images/flower-default.jpg": "Flower",
+        }
+
+        for url, expected_alt in expected_alt_texts.items():
+            resource = mined_by_url[url]
+            assert (
+                resource.metadata.get("alt_text") == expected_alt
+            ), f"Alt text mismatch for {url}"
 
     def test_miner_uses_host_header_from_metadata(self):
         """Test that HTMLImageMiner uses Host header from metadata for base URL."""
@@ -263,14 +287,6 @@ class TestHTMLImageMiner:
         assert len(mined_resources) == 1
         mined_keys = {mr.key for mr in mined_resources}
         assert mined_keys == expected_keys
-
-    def test_class_attrs(self):
-        class Miner(HTMLImageMiner):
-            allowed_domains = ["example.com", "cdn.example.com"]
-
-        miner = Miner()
-
-        assert miner.allowed_domains == ["example.com", "cdn.example.com"]
 
 
 @pytest.mark.django_db

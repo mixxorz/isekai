@@ -365,6 +365,25 @@ class TestMine:
             assert resource.key == expected_key
             assert resource.status == ConcreteResource.Status.SEEDED
 
+        # Check that alt text is preserved in metadata for resources that came from img tags
+        resources_by_key = {resource.key: resource for resource in resources}
+
+        expected_alt_texts = {
+            "url:https://example.com/images/cat.jpg": "Cat",
+            "url:https://example.com/images/dog-small.jpg": "Dog",
+            "url:https://example.com/images/bird-fallback.jpg": "Bird",
+            "url:https://example.com/images/flower-default.jpg": "Flower",
+        }
+
+        for resource_key, expected_alt in expected_alt_texts.items():
+            resource = resources_by_key[resource_key]
+            assert (
+                resource.metadata is not None
+            ), f"Metadata should not be None for {resource_key}"
+            assert (
+                resource.metadata.get("alt_text") == expected_alt
+            ), f"Alt text mismatch for {resource_key}"
+
         # Check original resource is updated
         original_resource.refresh_from_db()
         assert set(original_resource.dependencies.values_list("pk", flat=True)) == set(

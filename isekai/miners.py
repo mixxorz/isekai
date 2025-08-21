@@ -15,12 +15,15 @@ class BaseMiner:
 
 class HTMLImageMiner(BaseMiner):
     """
-    Extracts image URLs from HTML content.
+    Extracts image URLs from HTML content with accessibility metadata.
 
     Parses HTML using BeautifulSoup to find image URLs from:
     - <img> src attributes
     - <img> srcset attributes
-    - <source> srcset attributes (inside <picture> elements)
+    - <source> srcset attributes (inside <picture> elements only)
+
+    Metadata extraction:
+    - Alt text from <img> tags is captured and stored in metadata["alt_text"]
 
     URL resolution behavior:
     - Absolute URLs (with scheme) are returned as-is
@@ -58,7 +61,7 @@ class HTMLImageMiner(BaseMiner):
 
         # Only process text resources
         if not isinstance(resource, TextResource):
-            return []
+            return mined_resources
 
         base_url = self._determine_base_url(key, resource)
         soup = BeautifulSoup(resource.text, "html.parser")

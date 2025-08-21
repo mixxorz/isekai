@@ -85,7 +85,8 @@ class HTMLImageMiner(BaseMiner):
 
         # Find all <source> tags inside <picture> elements
         for picture in soup.find_all("picture"):
-            for source in picture.find_all("source"):
+            picture_tag = cast(Tag, picture)
+            for source in picture_tag.find_all("source"):
                 source_tag = cast(Tag, source)
                 srcset = source_tag.get("srcset")
                 if srcset:

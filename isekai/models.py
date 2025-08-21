@@ -1,15 +1,14 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.utils import timezone
 
+from isekai.extractors import BaseExtractor
+from isekai.miners import BaseMiner
+from isekai.seeders import BaseSeeder
 from isekai.types import TransitionError
-
-if TYPE_CHECKING:
-    from isekai.extractors import BaseExtractor
-    from isekai.seeders import BaseSeeder
 
 
 class AbstractResource(models.Model):
@@ -35,6 +34,14 @@ class AbstractResource(models.Model):
     )
     metadata = models.JSONField(blank=True, null=True)
 
+    # Resources this resource depends on
+    dependencies = models.ManyToManyField(
+        "self",
+        symmetrical=False,
+        related_name="dependent_resources",
+        blank=True,
+    )
+
     # Target
     target_content_type = models.ForeignKey(
         ContentType, on_delete=models.CASCADE, blank=True, null=True
@@ -58,9 +65,14 @@ class AbstractResource(models.Model):
     # Error tracking
     last_error = models.TextField(blank=True)
 
-    # Types
-    seeder: "BaseSeeder"
-    extractor: "BaseExtractor"
+    # Processors
+    seeder = BaseSeeder()
+    extractor = BaseExtractor()
+    miner = BaseMiner()
+
+    # Type checking
+    if TYPE_CHECKING:
+        data_type: Literal["text", "blob"]
 
     class Meta:
         abstract = True
@@ -88,6 +100,10 @@ class AbstractResource(models.Model):
             self.last_error = ""
             self.status = next_status
             self.extracted_at = timezone.now()
+        elif self.status == self.Status.EXTRACTED and next_status == self.Status.MINED:
+            self.last_error = ""
+            self.status = next_status
+            self.mined_at = timezone.now()
         else:
             raise TransitionError(
                 f"Cannot transition from {self.status} to {next_status}"

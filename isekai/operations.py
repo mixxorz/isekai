@@ -1,8 +1,9 @@
 import logging
+from typing import cast
 
 from django.core.files.base import ContentFile
 
-from isekai.types import BinaryData
+from isekai.types import BinaryData, ResourceData
 from isekai.utils import get_resource_model
 
 Resource = get_resource_model()
@@ -25,6 +26,7 @@ def seed(verbose: bool = False) -> None:
         logger.info(f"Found {len(keys)} keys from seeder")
 
     # Get existing resource keys to avoid duplicates
+    # TODO: Optimize using `bulk_create` with `ignore_conflicts=True`
     existing_keys = Resource.objects.filter(key__in=keys).values_list("key", flat=True)
     new_keys = set(keys) - set(existing_keys)
 
@@ -133,3 +135,41 @@ def extract(verbose: bool = False) -> None:
         logger.info(
             f"Extraction completed: {extracted_count} successful, {error_count} errors"
         )
+
+
+def mine(verbose=False):
+    miner = Resource.miner
+
+    resources = Resource.objects.filter(status=Resource.Status.EXTRACTED)
+
+    for resource in resources:
+        resource_data = (
+            cast(str, resource.data)
+            if resource.data_type == "text"
+            else BinaryData(
+                filename=resource.blob_data.name,
+                # TODO: Handle large files more efficiently, e.g. by passing a
+                # file-like object instead
+                data=resource.blob_data.read(),
+            )
+        )
+
+        # Mine the resource
+        keys = miner.mine(
+            resource.key,
+            ResourceData(
+                mime_type=resource.mime_type,
+                data_type=resource.data_type,
+                data=resource_data,
+                metadata=resource.metadata or {},
+            ),
+        )
+        mined_resources = [Resource(key=key) for key in keys]
+
+        # Create resources that don't already exist
+        Resource.objects.bulk_create(mined_resources, ignore_conflicts=True)
+
+        # Update the original resource that was mined
+        resource.dependencies.set(keys)
+        resource.transition_to(Resource.Status.MINED)
+        resource.save()

@@ -17,14 +17,13 @@ class Extractor(HTTPExtractor):
 
 
 class Miner(HTMLImageMiner):
-    pass
+    allowed_domains = ["*"]
 
 
 class ConcreteResource(AbstractResource):
-    """Concrete implementation of AbstractResource for testing."""
-
     seeder = Seeder()
     extractor = Extractor()
+    miner = Miner()
 
     class Meta:
         app_label = "testapp"

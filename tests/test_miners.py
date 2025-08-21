@@ -1,5 +1,11 @@
+import pytest
+from django.utils import timezone
+
 from isekai.miners import HTMLImageMiner
+from isekai.operations import mine
 from isekai.types import ResourceData
+from tests.test_seeders import freeze_time
+from tests.testapp.models import ConcreteResource
 
 
 class TestHTMLImageMiner:
@@ -237,3 +243,93 @@ class TestHTMLImageMiner:
         miner = Miner()
 
         assert miner.allowed_domains == ["example.com", "cdn.example.com"]
+
+
+@pytest.mark.django_db
+class TestMine:
+    def test_mine_creates_resources(self):
+        text_data = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Image Test</title>
+</head>
+<body>
+  <h1>Image test page</h1>
+
+  <!-- Simple <img> -->
+  <img src="images/cat.jpg" alt="Cat">
+
+  <!-- <img> with srcset -->
+  <img
+    src="images/dog-small.jpg"
+    srcset="images/dog-small.jpg 480w, images/dog-large.jpg 1024w"
+    alt="Dog"
+  >
+
+  <!-- <picture> element with multiple <source> -->
+  <picture>
+    <source srcset="images/bird-small.jpg" media="(max-width: 600px)">
+    <source srcset="images/bird-large.jpg" media="(min-width: 601px)">
+    <img src="images/bird-fallback.jpg" alt="Bird">
+  </picture>
+
+  <!-- Another <picture> with absolute URLs -->
+  <picture>
+    <source srcset="https://example.com/images/flower-hd.jpg" media="(min-width: 800px)">
+    <img src="https://example.com/images/flower-default.jpg" alt="Flower">
+  </picture>
+</body>
+</html>
+        """
+
+        # Resource to mine
+        original_resource = ConcreteResource.objects.create(
+            key="url:https://example.com",
+            data_type="text",
+            mime_type="text/html",
+            text_data=text_data,
+            status=ConcreteResource.Status.EXTRACTED,
+        )
+
+        now = timezone.now()
+        with freeze_time(now):
+            mine()
+
+        expected_resources = sorted(
+            [
+                "url:https://example.com/images/cat.jpg",
+                "url:https://example.com/images/dog-small.jpg",
+                "url:https://example.com/images/dog-large.jpg",
+                "url:https://example.com/images/bird-small.jpg",
+                "url:https://example.com/images/bird-large.jpg",
+                "url:https://example.com/images/bird-fallback.jpg",
+                "url:https://example.com/images/flower-hd.jpg",
+                "url:https://example.com/images/flower-default.jpg",
+            ]
+        )
+
+        resources = ConcreteResource.objects.filter(
+            key__in=expected_resources
+        ).order_by("key")
+
+        # Check mined resources are created
+        assert len(resources) == len(expected_resources)
+
+        for resource, expected_key in zip(resources, expected_resources, strict=False):
+            assert resource.key == expected_key
+            assert resource.status == ConcreteResource.Status.SEEDED
+
+        # Check original resource is updated
+        original_resource.refresh_from_db()
+        assert set(original_resource.dependencies.values_list("pk", flat=True)) == set(
+            resources.values_list("pk", flat=True)
+        ), "Dependencies should match mined resources"
+
+        assert original_resource.status == ConcreteResource.Status.MINED
+        assert original_resource.mined_at == now
+
+    def test_should_fail_to_transition(self):
+        # TODO: Move this to the test_models perhaps
+        pass

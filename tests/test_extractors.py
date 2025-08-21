@@ -231,25 +231,6 @@ class TestExtract:
         assert resource.status == ConcreteResource.Status.EXTRACTED
         assert resource.extracted_at == now
 
-    def test_extract_cannot_proceed_if_no_data(self):
-        ConcreteResource.objects.create(key="gen:foo")
-
-        extract()
-
-        resource = ConcreteResource.objects.get()
-
-        assert resource.status == ConcreteResource.Status.SEEDED
-        assert resource.extracted_at is None
-        assert resource.mime_type == ""
-        assert resource.data_type == ""
-        assert resource.text_data == ""
-        assert not resource.blob_data
-
-        assert (
-            resource.last_error
-            == "TransitionError: Cannot transition to EXTRACTED without data"
-        )
-
     @responses.activate
     def test_extract_merges_metadata_with_existing_resource_metadata(self):
         """Test that extract operation merges metadata with existing resource metadata."""

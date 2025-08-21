@@ -1,7 +1,9 @@
 import pytest
 from django.contrib.auth.models import User
 from django.contrib.contenttypes.models import ContentType
+from django.core.files.base import ContentFile
 
+from isekai.types import TransitionError
 from tests.testapp.models import ConcreteResource
 
 
@@ -51,3 +53,81 @@ class TestAbstractResource:
             key="test-gfk", target_content_type=user_ct, target_object_id=user.id
         )
         assert resource.target_object == user
+
+    def test_transition_to_extracted_with_text_data(self):
+        """Test successful transition from SEEDED to EXTRACTED with text data"""
+        resource = ConcreteResource.objects.create(
+            key="test-key", text_data="some text", data_type="text"
+        )
+
+        resource.transition_to(ConcreteResource.Status.EXTRACTED)
+
+        assert resource.status == ConcreteResource.Status.EXTRACTED
+        assert resource.extracted_at is not None
+        assert resource.last_error == ""
+
+    def test_transition_to_extracted_with_blob_data(self):
+        """Test successful transition from SEEDED to EXTRACTED with blob data"""
+        resource = ConcreteResource.objects.create(key="test-key")
+        resource.blob_data.save("test.txt", ContentFile(b"blob content"))
+        resource.data_type = "blob"
+        resource.save()
+
+        resource.transition_to(ConcreteResource.Status.EXTRACTED)
+
+        assert resource.status == ConcreteResource.Status.EXTRACTED
+        assert resource.extracted_at is not None
+        assert resource.last_error == ""
+
+    def test_transition_to_extracted_without_data_fails(self):
+        """Test that transition from SEEDED to EXTRACTED fails without data"""
+        resource = ConcreteResource.objects.create(key="test-key")
+
+        with pytest.raises(
+            TransitionError, match="Cannot transition to EXTRACTED without data"
+        ):
+            resource.transition_to(ConcreteResource.Status.EXTRACTED)
+
+        assert resource.status == ConcreteResource.Status.SEEDED
+        assert resource.extracted_at is None
+
+    def test_transition_to_mined_from_extracted(self):
+        """Test successful transition from EXTRACTED to MINED"""
+        resource = ConcreteResource.objects.create(
+            key="test-key",
+            status=ConcreteResource.Status.EXTRACTED,
+            text_data="some text",
+            data_type="text",
+        )
+
+        resource.transition_to(ConcreteResource.Status.MINED)
+
+        assert resource.status == ConcreteResource.Status.MINED
+        assert resource.mined_at is not None
+        assert resource.last_error == ""
+
+    def test_transition_invalid_status_progression_fails(self):
+        """Test that invalid status transitions raise TransitionError"""
+        resource = ConcreteResource.objects.create(key="test-key")
+
+        # Try to go directly from SEEDED to MINED (should fail)
+        with pytest.raises(
+            TransitionError, match="Cannot transition from seeded to mined"
+        ):
+            resource.transition_to(ConcreteResource.Status.MINED)
+
+        assert resource.status == ConcreteResource.Status.SEEDED
+
+    def test_transition_clears_last_error(self):
+        """Test that successful transitions clear the last_error field"""
+        resource = ConcreteResource.objects.create(
+            key="test-key",
+            text_data="some text",
+            data_type="text",
+            last_error="Previous error",
+        )
+
+        resource.transition_to(ConcreteResource.Status.EXTRACTED)
+
+        assert resource.status == ConcreteResource.Status.EXTRACTED
+        assert resource.last_error == ""

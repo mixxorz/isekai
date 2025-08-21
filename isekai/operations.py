@@ -1,11 +1,9 @@
 import logging
-import tempfile
-from pathlib import Path
 from typing import cast
 
 from django.core.files.base import ContentFile
 
-from isekai.types import BlobResource, Key, TextResource
+from isekai.types import BlobResource, FieldFileRef, Key, PathFileRef, TextResource
 from isekai.utils import get_resource_model
 
 Resource = get_resource_model()
@@ -65,40 +63,42 @@ def extract(verbose: bool = False) -> None:
 
         try:
             key = Key.from_string(resource.key)
-            extracted_data = extractor.extract(key)
+            extracted_resource = extractor.extract(key)
 
-            if extracted_data:
-                resource.mime_type = extracted_data.mime_type
+            if extracted_resource:
+                resource.mime_type = extracted_resource.mime_type
 
                 # Merge metadata
                 if resource.metadata is None:
                     resource.metadata = {}  # type: ignore[assignment]
 
-                resource.metadata.update(dict(extracted_data.metadata))
+                resource.metadata.update(dict(extracted_resource.metadata))
 
-                if isinstance(extracted_data, TextResource):
+                if isinstance(extracted_resource, TextResource):
                     resource.data_type = "text"
-                    resource.text_data = extracted_data.text
+                    resource.text_data = extracted_resource.text
 
                     if verbose:
                         logger.info(
-                            f"Extracted text data ({extracted_data.mime_type}) for {resource.key}"
+                            f"Extracted text data ({extracted_resource.mime_type}) for {resource.key}"
                         )
-                elif isinstance(extracted_data, BlobResource):
+                elif isinstance(extracted_resource, BlobResource):
                     resource.data_type = "blob"
                     # Read the temporary file and save it to the model's FileField
-                    with open(extracted_data.path, "rb") as temp_file:
+                    with extracted_resource.file_ref.open() as temp_file:
                         resource.blob_data.save(
-                            extracted_data.filename,
+                            extracted_resource.filename,
                             ContentFile(temp_file.read()),
                             save=False,
                         )
+
                     # Clean up the temporary file
-                    extracted_data.path.unlink(missing_ok=True)
+                    assert isinstance(extracted_resource.file_ref, PathFileRef)
+                    extracted_resource.file_ref.path.unlink(missing_ok=True)
 
                     if verbose:
                         logger.info(
-                            f"Extracted blob data ({extracted_data.mime_type}) for {resource.key}"
+                            f"Extracted blob data ({extracted_resource.mime_type}) for {resource.key}"
                         )
 
             resource.transition_to(Resource.Status.EXTRACTED)
@@ -164,15 +164,10 @@ def mine(verbose: bool = False) -> None:
                 metadata=resource.metadata or {},
             )
         else:
-            # For blob data, create a temporary file
-            temp_file = tempfile.NamedTemporaryFile(delete=False)
-            temp_file.write(resource.blob_data.read())
-            temp_file.close()
-
             resource_obj = BlobResource(
                 mime_type=resource.mime_type,
                 filename=resource.blob_data.name,
-                path=Path(temp_file.name),
+                file_ref=FieldFileRef(ff=resource.blob_data),
                 metadata=resource.metadata or {},
             )
 
@@ -204,8 +199,10 @@ def mine(verbose: bool = False) -> None:
         resource.save()
 
         # Clean up temporary file if it was a blob resource
-        if isinstance(resource_obj, BlobResource):
-            resource_obj.path.unlink(missing_ok=True)
+        if isinstance(resource_obj, BlobResource) and isinstance(
+            resource_obj.file_ref, PathFileRef
+        ):
+            resource_obj.file_ref.path.unlink(missing_ok=True)
 
         if verbose:
             logger.info(f"Successfully mined: {resource.key}")

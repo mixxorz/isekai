@@ -1,7 +1,10 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import IO, TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from django.db.models import FieldFile
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,11 +44,27 @@ class TextResource:
     metadata: Mapping[str, Any]
 
 
+@dataclass(frozen=True)
+class PathFileRef:
+    path: Path
+
+    def open(self) -> IO[bytes]:
+        return self.path.open("rb")
+
+
+@dataclass(frozen=True)
+class FieldFileRef:
+    ff: "FieldFile"
+
+    def open(self) -> IO[bytes]:
+        return self.ff.storage.open(self.ff.name, mode="rb")
+
+
 @dataclass(frozen=True, slots=True)
 class BlobResource:
     mime_type: str
     filename: str
-    path: Path
+    file_ref: PathFileRef | FieldFileRef
     metadata: Mapping[str, Any]
 
 

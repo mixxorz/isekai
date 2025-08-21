@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from isekai.types import BlobResource, Key, TextResource
+from isekai.types import BlobResource, Key, PathFileRef, TextResource
 
 # Text MIME types that should be treated as text data
 TEXT_MIME_TYPES = {
@@ -52,7 +52,7 @@ class HTTPExtractor(BaseExtractor):
             return BlobResource(
                 mime_type=mime_type,
                 filename=filename,
-                path=Path(temp_file.name),
+                file_ref=PathFileRef(path=Path(temp_file.name)),
                 metadata=metadata,
             )
 

@@ -50,7 +50,7 @@ class TestHTTPExtractor:
         assert result.mime_type == "image/png"
         assert result.filename == "test-image.png"
         # Read the temporary file to verify content
-        with open(result.path, "rb") as f:
+        with result.file_ref.open() as f:
             assert f.read() == png_data
 
     @responses.activate
@@ -78,7 +78,7 @@ class TestHTTPExtractor:
         assert result.mime_type == "application/pdf"
         assert result.filename == "report.pdf"
         # Read the temporary file to verify content
-        with open(result.path, "rb") as f:
+        with result.file_ref.open() as f:
             assert f.read() == pdf_data
 
     @responses.activate
@@ -140,7 +140,7 @@ class TestHTTPExtractor:
         assert result.mime_type == "application/zip"
         assert result.filename == "export.zip"
         # Read the temporary file to verify content
-        with open(result.path, "rb") as f:
+        with result.file_ref.open() as f:
             assert f.read() == zip_data
 
     @responses.activate
@@ -165,7 +165,7 @@ class TestHTTPExtractor:
         assert result.mime_type == "application/zip"
         assert result.filename == "my-project-v2.zip"
         # Read the temporary file to verify content
-        with open(result.path, "rb") as f:
+        with result.file_ref.open() as f:
             assert f.read() == zip_data
 
 

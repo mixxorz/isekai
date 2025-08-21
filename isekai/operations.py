@@ -27,32 +27,8 @@ def seed(verbose: bool = False) -> None:
     if verbose:
         logger.info(f"Found {len(seeded_resources)} resources from seeder")
 
-    # Extract key strings for database lookup
-    key_strings = [str(sr.key) for sr in seeded_resources]
-
-    # Get existing resource keys to avoid duplicates
-    # TODO: Optimize using `bulk_create` with `ignore_conflicts=True`
-    existing_keys = set(
-        Resource.objects.filter(key__in=key_strings).values_list("key", flat=True)
-    )
-
-    # Filter out existing resources
-    new_seeded_resources = [
-        sr for sr in seeded_resources if str(sr.key) not in existing_keys
-    ]
-
-    if verbose:
-        logger.info(
-            f"Existing resources: {len(existing_keys)}, New resources: {len(new_seeded_resources)}"
-        )
-
-    if not new_seeded_resources:
-        if verbose:
-            logger.info("No new resources to seed")
-        return
-
     resources = []
-    for seeded_resource in new_seeded_resources:
+    for seeded_resource in seeded_resources:
         resource = Resource(
             key=str(seeded_resource.key),
             metadata=seeded_resource.metadata or None,
@@ -65,7 +41,7 @@ def seed(verbose: bool = False) -> None:
     if verbose:
         logger.info("Saving seeded resources to database...")
 
-    Resource.objects.bulk_create(resources)
+    Resource.objects.bulk_create(resources, ignore_conflicts=True)
 
     if verbose:
         logger.info(f"Seeding completed: {len(resources)} resources seeded")

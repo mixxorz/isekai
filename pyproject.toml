@@ -48,6 +48,11 @@ test = [
 Homepage = "https://github.com/mixxorz/isekai"
 Repository = "https://github.com/mixxorz/isekai"
 
+[project.optional-dependencies]
+wagtail = [
+    "wagtail>=6.3",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

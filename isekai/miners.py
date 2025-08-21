@@ -42,6 +42,8 @@ class HTMLImageMiner(BaseMiner):
     - Otherwise, only URLs from allowed domains are returned
     """
 
+    allowed_domains: list[str] = []
+
     def __init__(self, allowed_domains: list[str] | None = None):
         """
         Initialize HTMLImageMiner.
@@ -50,9 +52,7 @@ class HTMLImageMiner(BaseMiner):
             allowed_domains: Optional list of allowed domains. If empty/None,
                            all URLs are denied. Use ['*'] to allow all domains.
         """
-        # Support both constructor parameter and class attribute
-        domains = allowed_domains or getattr(self.__class__, "allowed_domains", None)
-        self.allowed_domains = domains
+        self.allowed_domains = allowed_domains or self.allowed_domains
 
     def mine(
         self, key: Key, resource: TextResource | BlobResource

@@ -21,10 +21,10 @@ class CSVSeeder(BaseSeeder):
     Keys will be formatted as '{type}:{value}'.
     """
 
+    csv_filename: str | None = None
+
     def __init__(self, csv_filename: str | None = None):
-        self.csv_filename = csv_filename or getattr(
-            self.__class__, "csv_filename", None
-        )
+        self.csv_filename = csv_filename or self.csv_filename
         if self.csv_filename is None:
             raise ValueError(
                 "csv_filename must be provided either as parameter or class attribute"
@@ -51,8 +51,10 @@ class SitemapSeeder(BaseSeeder):
     returning them as 'url:{url}' keys.
     """
 
+    sitemaps: list[str] = []
+
     def __init__(self, sitemaps: list[str] | None = None):
-        self.sitemaps = sitemaps or getattr(self.__class__, "sitemaps", [])
+        self.sitemaps = sitemaps or self.sitemaps
 
     def seed(self) -> list[SeededResource]:
         resources = super().seed()

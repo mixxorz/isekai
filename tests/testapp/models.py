@@ -1,3 +1,7 @@
+from wagtail.admin.panels import FieldPanel
+from wagtail.fields import RichTextField
+from wagtail.models import Page
+
 from isekai.extractors import HTTPExtractor
 from isekai.miners import HTMLImageMiner
 from isekai.models import AbstractResource
@@ -29,3 +33,14 @@ class ConcreteResource(AbstractResource):
         app_label = "testapp"
         verbose_name = "Concrete Resource"
         verbose_name_plural = "Concrete Resources"
+
+
+class HomePage(Page):
+    body = RichTextField(blank=True)
+
+    content_panels = Page.content_panels + [
+        FieldPanel("body"),
+    ]
+
+    class Meta:
+        app_label = "testapp"

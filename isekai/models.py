@@ -97,6 +97,7 @@ class AbstractResource(models.Model):
         3. Updates the status and relevant timestamps.
         """
 
+        # SEEDED -> EXTRACTED
         if self.status == self.Status.SEEDED and next_status == self.Status.EXTRACTED:
             if not self.text_data and not self.blob_data:
                 raise TransitionError("Cannot transition to EXTRACTED without data")
@@ -104,14 +105,20 @@ class AbstractResource(models.Model):
             self.last_error = ""
             self.status = next_status
             self.extracted_at = timezone.now()
+        # EXTRACTED -> MINED
         elif self.status == self.Status.EXTRACTED and next_status == self.Status.MINED:
             self.last_error = ""
             self.status = next_status
             self.mined_at = timezone.now()
+        # MINED -> TRANSFORMED
         elif (
             self.status == self.Status.MINED and next_status == self.Status.TRANSFORMED
         ):
-            # TODO: Fail if no target spec
+            if not self.target_content_type_id or not self.target_spec:
+                raise TransitionError(
+                    "Cannot transition to TRANSFORMED without target content type and spec"
+                )
+
             self.last_error = ""
             self.status = next_status
             self.transformed_at = timezone.now()

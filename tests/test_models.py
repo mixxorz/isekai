@@ -163,6 +163,66 @@ class TestExtractedToMinedTransition:
 
 
 @pytest.mark.django_db
+class TestMinedToTransformedTransition:
+    def test_transition_from_mined(self):
+        """Test successful transition from MINED to TRANSFORMED"""
+        user_ct = ContentType.objects.get_for_model(User)
+        resource = ConcreteResource.objects.create(
+            key="test-key",
+            status=ConcreteResource.Status.MINED,
+            text_data="some text",
+            data_type="text",
+            target_content_type=user_ct,
+            target_spec={"name": "Test User", "email": "test@example.com"},
+        )
+
+        resource.transition_to(ConcreteResource.Status.TRANSFORMED)
+
+        assert resource.status == ConcreteResource.Status.TRANSFORMED
+        assert resource.transformed_at is not None
+        assert resource.last_error == ""
+
+    def test_transition_without_target_content_type_fails(self):
+        """Test that transition from MINED to TRANSFORMED fails without target content type"""
+        resource = ConcreteResource.objects.create(
+            key="test-key",
+            status=ConcreteResource.Status.MINED,
+            text_data="some text",
+            data_type="text",
+            target_spec={"name": "Test User"},
+        )
+
+        with pytest.raises(
+            TransitionError,
+            match="Cannot transition to TRANSFORMED without target content type and spec",
+        ):
+            resource.transition_to(ConcreteResource.Status.TRANSFORMED)
+
+        assert resource.status == ConcreteResource.Status.MINED
+        assert resource.transformed_at is None
+
+    def test_transition_without_target_spec_fails(self):
+        """Test that transition from MINED to TRANSFORMED fails without target spec"""
+        user_ct = ContentType.objects.get_for_model(User)
+        resource = ConcreteResource.objects.create(
+            key="test-key",
+            status=ConcreteResource.Status.MINED,
+            text_data="some text",
+            data_type="text",
+            target_content_type=user_ct,
+        )
+
+        with pytest.raises(
+            TransitionError,
+            match="Cannot transition to TRANSFORMED without target content type and spec",
+        ):
+            resource.transition_to(ConcreteResource.Status.TRANSFORMED)
+
+        assert resource.status == ConcreteResource.Status.MINED
+        assert resource.transformed_at is None
+
+
+@pytest.mark.django_db
 class TestInvalidTransitions:
     def test_seeded_to_mined_fails(self):
         """Test that transition from SEEDED to MINED fails"""

@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
 
-from isekai.types import TransitionError
+from isekai.types import BlobResource, TextResource, TransitionError
 from tests.testapp.models import ConcreteResource
 
 
@@ -50,9 +50,44 @@ class TestAbstractResource:
         user_ct = ContentType.objects.get_for_model(User)
 
         resource = ConcreteResource.objects.create(
-            key="test-gfk", target_content_type=user_ct, target_object_id=user.id
+            key="test-gfk",
+            target_content_type=user_ct,
+            target_object_id=user.pk,
         )
         assert resource.target_object == user
+
+    def test_get_resource_object(self):
+        text_resource = ConcreteResource.objects.create(
+            key="url:https://example.com/text.txt",
+            mime_type="text/plain",
+            data_type="text",
+            text_data="Sample text data",
+            metadata={"source": "example.com"},
+        )
+
+        resource_obj = text_resource.to_resource_dataclass()
+
+        assert isinstance(resource_obj, TextResource)
+        assert resource_obj.mime_type == "text/plain"
+        assert resource_obj.text == "Sample text data"
+        assert resource_obj.metadata == {"source": "example.com"}
+
+        blob_resource = ConcreteResource.objects.create(
+            key="url:https://example.com/blob.bin",
+            mime_type="application/octet-stream",
+            data_type="blob",
+            metadata={"source": "example.com"},
+        )
+        blob_resource.blob_data.save("blob.bin", ContentFile(b"Sample blob data"))
+
+        resource_obj = blob_resource.to_resource_dataclass()
+
+        assert isinstance(resource_obj, BlobResource)
+        assert resource_obj.mime_type == "application/octet-stream"
+        with resource_obj.file_ref.open() as f:
+            assert f.read() == b"Sample blob data"
+        assert resource_obj.filename == "blob.bin"
+        assert resource_obj.metadata == {"source": "example.com"}
 
 
 @pytest.mark.django_db

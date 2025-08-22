@@ -1,12 +1,10 @@
 import logging
-import os
 
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
 
 from isekai.types import (
     BlobResource,
-    FieldFileRef,
     Key,
     PathFileRef,
     TextResource,
@@ -165,19 +163,7 @@ def mine(verbose: bool = False) -> None:
 
         # Create appropriate resource object for mining
         key = Key.from_string(resource.key)
-        if resource.data_type == "text":
-            resource_obj = TextResource(
-                mime_type=resource.mime_type,
-                text=resource.text_data,
-                metadata=resource.metadata or {},
-            )
-        else:
-            resource_obj = BlobResource(
-                mime_type=resource.mime_type,
-                filename=os.path.basename(resource.blob_data.name),
-                file_ref=FieldFileRef(ff=resource.blob_data),
-                metadata=resource.metadata or {},
-            )
+        resource_obj = resource.to_resource_dataclass()
 
         # Mine the resource
         mined_resources = miner.mine(key, resource_obj)
@@ -245,20 +231,7 @@ def transform(verbose: bool = False) -> None:
 
         try:
             key = Key.from_string(resource.key)
-            if resource.data_type == "text":
-                resource_obj = TextResource(
-                    mime_type=resource.mime_type,
-                    text=resource.text_data,
-                    metadata=resource.metadata or {},
-                )
-            else:
-                resource_obj = BlobResource(
-                    mime_type=resource.mime_type,
-                    filename=os.path.basename(resource.blob_data.name),
-                    file_ref=FieldFileRef(ff=resource.blob_data),
-                    metadata=resource.metadata or {},
-                )
-
+            resource_obj = resource.to_resource_dataclass()
             spec = transformer.transform(key, resource_obj)
 
             if spec:

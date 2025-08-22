@@ -10,7 +10,8 @@ from isekai.extractors import BaseExtractor
 from isekai.miners import BaseMiner
 from isekai.seeders import BaseSeeder
 from isekai.transformers import BaseTransformer
-from isekai.types import TransitionError
+from isekai.types import BlobResource, FieldFileRef, TextResource, TransitionError
+from tests.conftest import os
 
 
 class AbstractResource(models.Model):
@@ -118,3 +119,22 @@ class AbstractResource(models.Model):
             raise TransitionError(
                 f"Cannot transition from {self.status} to {next_status}"
             )
+
+    def to_resource_dataclass(self) -> TextResource | BlobResource:
+        """Returns a TextResource or BlobResource for this Resource"""
+
+        if self.data_type == "text":
+            resource_obj = TextResource(
+                mime_type=self.mime_type,
+                text=self.text_data,
+                metadata=self.metadata or {},
+            )
+        else:
+            resource_obj = BlobResource(
+                mime_type=self.mime_type,
+                filename=os.path.basename(self.blob_data.name),
+                file_ref=FieldFileRef(ff=self.blob_data),
+                metadata=self.metadata or {},
+            )
+
+        return resource_obj

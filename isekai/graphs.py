@@ -1,6 +1,7 @@
-from collections.abc import Hashable, Iterable
+from collections.abc import Iterable
+from graphlib import TopologicalSorter
 
-Node = Hashable
+Node = str
 Edge = tuple[Node, Node]
 
 
@@ -76,3 +77,51 @@ def tarjan_scc(
             comp_id[v] = cid
 
     return comps, comp_id
+
+
+def build_condensation(
+    edges: list[Edge], comp_id: dict[Node, int], k: int
+) -> dict[int, set[int]]:
+    """Return DAG as dict: comp -> set(of neighbor comps)."""
+    dag: dict[int, set[int]] = {i: set() for i in range(k)}
+    for u, v in edges:
+        cu, cv = comp_id[u], comp_id[v]
+        if cu != cv:
+            dag[cu].add(cv)
+    return dag
+
+
+def topo_sort(dep_map: dict[int, set[int]]) -> list[int]:
+    """
+    Return a dependencies-first topological order of component labels.
+    Raises graphlib.CycleError if dep_map itself has a cycle (shouldn't happen for condensation).
+    """
+    return list(TopologicalSorter(dep_map).static_order())
+
+
+def resolve_build_order(
+    nodes: Iterable[Node], edges: Iterable[Edge]
+) -> list[list[Node]]:
+    """
+    Return the optimal build order for resources with dependencies.
+
+    Returns a list of build groups, where:
+    - Each group is a list of nodes that can be built in parallel
+    - Groups must be built in order (dependencies first)
+    - Nodes in the same group have cyclic dependencies and must be built together
+
+    Raises ValueError if any edge references a node not in the nodes list.
+    """
+    node_set = set(nodes)
+    for u, v in edges:
+        if u not in node_set:
+            raise ValueError(f"Edge references unknown node: {u}")
+        if v not in node_set:
+            raise ValueError(f"Edge references unknown node: {v}")
+
+    sccs, comp_id = tarjan_scc(nodes, edges)
+    condensation = build_condensation(list(edges), comp_id, len(sccs))
+    build_order = topo_sort(condensation)
+
+    # Return SCCs in topological order
+    return [sccs[comp_idx] for comp_idx in build_order]

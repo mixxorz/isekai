@@ -3,7 +3,7 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandParser
 
-from isekai.operations import seed
+from isekai.operations.seed import seed
 
 
 class Command(BaseCommand):

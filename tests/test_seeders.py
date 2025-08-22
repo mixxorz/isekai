@@ -3,7 +3,7 @@ import responses
 from django.utils import timezone
 from freezegun import freeze_time
 
-from isekai.operations import seed
+from isekai.operations.seed import seed
 from isekai.seeders import CSVSeeder, SitemapSeeder
 from tests.test_extractors import ConcreteResource
 

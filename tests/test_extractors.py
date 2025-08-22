@@ -4,7 +4,7 @@ from django.utils import timezone
 from freezegun import freeze_time
 
 from isekai.extractors import HTTPExtractor
-from isekai.operations import extract
+from isekai.operations.extract import extract
 from isekai.types import BlobResource, Key, TextResource
 from tests.testapp.models import ConcreteResource
 

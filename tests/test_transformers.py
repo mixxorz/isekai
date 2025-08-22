@@ -4,7 +4,7 @@ from django.core.files.base import ContentFile
 from django.utils import timezone
 from freezegun import freeze_time
 
-from isekai.operations import transform
+from isekai.operations.transform import transform
 from tests.testapp.models import ConcreteResource
 
 

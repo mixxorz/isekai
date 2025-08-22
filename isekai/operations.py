@@ -26,14 +26,14 @@ def seed(verbose: bool = False) -> None:
     seeders = Resource.seeders
 
     if verbose:
-        logger.info(f"Using {len(seeders)} seeders to seed resources")
+        logger.info(f"Using {len(seeders)} seeders")
 
     seeded_resources: list[SeededResource] = []
     for seeder in seeders:
         seeded_resources.extend(seeder.seed())
 
     if verbose:
-        logger.info(f"Found {len(seeded_resources)} resources from seeder")
+        logger.info(f"Found {len(seeded_resources)} resources from seeders")
 
     resources = []
     for seeded_resource in seeded_resources:
@@ -52,7 +52,7 @@ def seed(verbose: bool = False) -> None:
     Resource.objects.bulk_create(resources, ignore_conflicts=True)
 
     if verbose:
-        logger.info(f"Seeding completed: {len(resources)} resources seeded")
+        logger.info(f"Seeding completed: {len(resources)} resources processed")
 
 
 def extract(verbose: bool = False) -> None:
@@ -62,6 +62,9 @@ def extract(verbose: bool = False) -> None:
 
     extractors = Resource.extractors
 
+    if verbose:
+        logger.info(f"Using {len(extractors)} extractors")
+
     resources = Resource.objects.filter(status=Resource.Status.SEEDED)
 
     if verbose:
@@ -69,7 +72,7 @@ def extract(verbose: bool = False) -> None:
 
     for resource in resources:
         if verbose:
-            logger.info(f"Processing resource: {resource.key}")
+            logger.info(f"Extracting resource: {resource.key}")
 
         try:
             key = Key.from_string(resource.key)
@@ -160,6 +163,9 @@ def mine(verbose: bool = False) -> None:
 
     miners = Resource.miners
 
+    if verbose:
+        logger.info(f"Using {len(miners)} miners")
+
     resources = Resource.objects.filter(status=Resource.Status.EXTRACTED)
 
     if verbose:
@@ -173,48 +179,68 @@ def mine(verbose: bool = False) -> None:
         key = Key.from_string(resource.key)
         resource_obj = resource.to_resource_dataclass()
 
-        # Mine the resource
-        mined_resources: list[MinedResource] = []
+        try:
+            # Mine the resource
+            mined_resources: list[MinedResource] = []
 
-        for miner in miners:
-            mined_resources.extend(miner.mine(key, resource_obj))
+            for miner in miners:
+                mined_resources.extend(miner.mine(key, resource_obj))
 
-        if verbose:
-            logger.info(
-                f"Discovered {len(mined_resources)} new resources from {resource.key}"
-            )
+            if verbose:
+                logger.info(
+                    f"Discovered {len(mined_resources)} new resources from {resource.key}"
+                )
 
-        # Extract key strings for database operations
-        mined_key_strings = [str(mr.key) for mr in mined_resources]
+            # Extract key strings for database operations
+            mined_key_strings = [str(mr.key) for mr in mined_resources]
 
-        # Create Resource objects for new keys
-        new_django_resources = [
-            Resource(
-                key=str(mr.key), metadata=dict(mr.metadata) if mr.metadata else None
-            )
-            for mr in mined_resources
-        ]
+            # Create Resource objects for new keys
+            new_django_resources = [
+                Resource(
+                    key=str(mr.key), metadata=dict(mr.metadata) if mr.metadata else None
+                )
+                for mr in mined_resources
+            ]
 
-        # Create resources that don't already exist
-        Resource.objects.bulk_create(new_django_resources, ignore_conflicts=True)
+            # Create resources that don't already exist
+            Resource.objects.bulk_create(new_django_resources, ignore_conflicts=True)
 
-        # Update the original resource that was mined
-        resource.dependencies.set(mined_key_strings)
-        resource.transition_to(Resource.Status.MINED)
-        resource.save()
+            # Update the original resource that was mined
+            resource.dependencies.set(mined_key_strings)
+            resource.transition_to(Resource.Status.MINED)
+            resource.save()
 
-        # Clean up temporary file if it was a blob resource
-        if isinstance(resource_obj, BlobResource) and isinstance(
-            resource_obj.file_ref, PathFileRef
-        ):
-            resource_obj.file_ref.path.unlink(missing_ok=True)
+            # Clean up temporary file if it was a blob resource
+            if isinstance(resource_obj, BlobResource) and isinstance(
+                resource_obj.file_ref, PathFileRef
+            ):
+                resource_obj.file_ref.path.unlink(missing_ok=True)
 
-        if verbose:
-            logger.info(f"Successfully mined: {resource.key}")
+            if verbose:
+                logger.info(f"Successfully mined: {resource.key}")
+
+        except Exception as e:
+            resource.last_error = f"{e.__class__.__name__}: {str(e)}"
+
+            if verbose:
+                logger.error(f"Failed to mine {resource.key}: {e}")
 
     if verbose:
-        mined_count = len(resources)
-        logger.info(f"Mining completed: {mined_count} resources processed")
+        logger.info("Saving changes to database...")
+
+    Resource.objects.bulk_update(
+        resources,
+        [
+            "status",
+            "mined_at",
+            "last_error",
+        ],
+    )
+
+    if verbose:
+        mined_count = sum(1 for r in resources if r.status == Resource.Status.MINED)
+        error_count = sum(1 for r in resources if r.last_error)
+        logger.info(f"Mining completed: {mined_count} successful, {error_count} errors")
 
 
 def transform(verbose: bool = False) -> None:
@@ -225,7 +251,7 @@ def transform(verbose: bool = False) -> None:
     transformers = Resource.transformers
 
     if verbose:
-        logger.info(f"Found {len(transformers)} transformers to process resources")
+        logger.info(f"Using {len(transformers)} transformers")
 
     content_types = ContentType.objects.values_list("app_label", "model", "pk")
 
@@ -243,6 +269,7 @@ def transform(verbose: bool = False) -> None:
         try:
             key = Key.from_string(resource.key)
             resource_obj = resource.to_resource_dataclass()
+            # Use the first transformer that can handle the resource
             spec = next(
                 transformer.transform(key, resource_obj) for transformer in transformers
             )
@@ -290,5 +317,5 @@ def transform(verbose: bool = False) -> None:
         )
         error_count = sum(1 for r in resources if r.last_error)
         logger.info(
-            f"Transformation completed: {transformed_count} successful, {error_count} errors"
+            f"Transform completed: {transformed_count} successful, {error_count} errors"
         )

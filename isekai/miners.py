@@ -57,7 +57,7 @@ class HTMLImageMiner(BaseMiner):
     def mine(
         self, key: Key, resource: TextResource | BlobResource
     ) -> list[MinedResource]:
-        mined_resources = super().mine(key, resource)
+        mined_resources = []
 
         # Only process text resources
         if not isinstance(resource, TextResource):

@@ -31,7 +31,7 @@ class CSVSeeder(BaseSeeder):
             )
 
     def seed(self) -> list[SeededResource]:
-        resources = super().seed()
+        resources = []
 
         if self.csv_filename:
             with open(self.csv_filename) as file:

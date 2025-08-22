@@ -78,9 +78,12 @@ def extract(verbose: bool = False) -> None:
             key = Key.from_string(resource.key)
 
             # Extract using the first extractor that can handle the resource
-            extracted_resource = next(
-                extractor.extract(key) for extractor in extractors
-            )
+            extracted_resource = None
+            for extractor in extractors:
+                er = extractor.extract(key)
+                if er:
+                    extracted_resource = er
+                    break
 
             if extracted_resource:
                 resource.mime_type = extracted_resource.mime_type

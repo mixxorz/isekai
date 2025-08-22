@@ -24,8 +24,9 @@ class BaseExtractor:
 
 class HTTPExtractor(BaseExtractor):
     def extract(self, key: Key) -> TextResource | BlobResource | None:
+        # We only handle keys of type "url"
         if key.type != "url":
-            return super().extract(key)
+            return None
 
         url = key.value
 

@@ -190,6 +190,7 @@ class TestExtract:
         assert resource.status == ConcreteResource.Status.EXTRACTED
         assert resource.extracted_at == now
 
+        assert resource.metadata
         assert "response_headers" in resource.metadata
         assert "Content-Type" in resource.metadata["response_headers"]
 
@@ -231,6 +232,24 @@ class TestExtract:
         assert resource.status == ConcreteResource.Status.EXTRACTED
         assert resource.extracted_at == now
 
+    def test_extract_handles_extractor_chaining(self):
+        # Create a resource that will be processed by multiple extractors
+        ConcreteResource.objects.create(key="foo:bar")
+
+        now = timezone.now()
+        with freeze_time(now):
+            extract()
+
+        resource = ConcreteResource.objects.get()
+
+        assert resource.key == "foo:bar"
+        assert resource.mime_type == "foo/bar"
+        assert resource.data_type == "text"
+        assert resource.data == "foo bar data"
+
+        assert resource.status == ConcreteResource.Status.EXTRACTED
+        assert resource.extracted_at == now
+
     @responses.activate
     def test_extract_merges_metadata_with_existing_resource_metadata(self):
         """Test that extract operation merges metadata with existing resource metadata."""
@@ -264,6 +283,7 @@ class TestExtract:
         assert resource.status == ConcreteResource.Status.EXTRACTED
 
         # Verify metadata was merged (not replaced)
+        assert resource.metadata
         assert "custom_field" in resource.metadata
         assert resource.metadata["custom_field"] == "existing_value"
         assert "another_field" in resource.metadata

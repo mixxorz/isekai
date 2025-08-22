@@ -35,12 +35,11 @@ def transform(verbose: bool = False) -> None:
         try:
             key = Key.from_string(resource.key)
             resource_obj = resource.to_resource_dataclass()
+
             # Use the first transformer that can handle the resource
             spec = None
             for transformer in transformers:
-                s = transformer.transform(key, resource_obj)
-                if s:
-                    spec = s
+                if spec := transformer.transform(key, resource_obj):
                     break
 
             if spec:

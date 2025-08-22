@@ -34,9 +34,7 @@ def extract(verbose: bool = False) -> None:
             # Extract using the first extractor that can handle the resource
             extracted_resource = None
             for extractor in extractors:
-                er = extractor.extract(key)
-                if er:
-                    extracted_resource = er
+                if extracted_resource := extractor.extract(key):
                     break
 
             if extracted_resource:

@@ -34,7 +34,11 @@ class TestModelLoader:
         assert objects[0].description == "A sample image"
 
         with open("tests/files/blue_square.jpg", "rb") as f:
-            assert objects[0].file.read() == f.read()
+            expected_content = f.read()
+
+        # Read from the saved file to compare content
+        with objects[0].file.open() as saved_file:
+            assert saved_file.read() == expected_content
 
     def test_load_simple_model(self):
         """Test loading a simple model without relationships."""

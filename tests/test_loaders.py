@@ -3,7 +3,7 @@ from wagtail.images import get_image_model
 
 from isekai.loaders import ModelLoader
 from isekai.types import BlobRef, FileRef, InMemoryFileRef, Key, Ref, Spec
-from tests.testapp.models import Article, Author, Tag
+from tests.testapp.models import Article, Author, AuthorProfile, Tag
 
 Image = get_image_model()
 
@@ -454,6 +454,142 @@ class TestModelLoader:
         assert article.author == author
         assert list(article.tags.all()) == []  # M2M should be empty by default
         assert article.metadata is None
+
+    def test_load_with_onetoone_field(self):
+        """Test loading models with OneToOne field relationships."""
+
+        def resolver(ref):
+            return None
+
+        loader = ModelLoader(resolver=resolver)
+
+        # Create author and profile with OneToOne relationship
+        author_key = Key(type="author", value="profile_author")
+        profile_key = Key(type="profile", value="author_profile")
+
+        author_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "Profile Author",
+                "email": "profile@example.com",
+            },
+        )
+
+        profile_spec = Spec(
+            content_type="testapp.AuthorProfile",
+            attributes={
+                "author": Ref(author_key),  # OneToOne reference
+                "website": "https://example.com",
+                "twitter_handle": "@profile_author",
+                "settings": {"theme": "dark", "notifications": True},
+            },
+        )
+
+        objects = loader.load([(author_key, author_spec), (profile_key, profile_spec)])
+
+        assert len(objects) == 2
+        author = next(obj for obj in objects if isinstance(obj, Author))
+        profile = next(obj for obj in objects if isinstance(obj, AuthorProfile))
+
+        # Check OneToOne relationship
+        assert profile.author == author
+        assert author.authorprofile == profile  # Reverse relationship
+        assert profile.website == "https://example.com"
+        assert profile.twitter_handle == "@profile_author"
+        assert profile.settings == {"theme": "dark", "notifications": True}
+
+    def test_load_with_external_onetoone_reference(self):
+        """Test OneToOne field with external reference via resolver."""
+        # Create existing author in database
+        existing_author = Author.objects.create(
+            name="Existing OneToOne Author",
+            email="existing_oto@example.com",
+        )
+
+        def resolver(ref):
+            if ref.key.type == "author" and ref.key.value == "existing_oto_author":
+                return existing_author.pk
+            return None
+
+        loader = ModelLoader(resolver=resolver)
+
+        profile_key = Key(type="profile", value="external_oto_profile")
+        profile_spec = Spec(
+            content_type="testapp.AuthorProfile",
+            attributes={
+                "author": Ref(Key(type="author", value="existing_oto_author")),
+                "website": "https://external.example.com",
+                "settings": {"external": True},
+            },
+        )
+
+        objects = loader.load([(profile_key, profile_spec)])
+
+        assert len(objects) == 1
+        profile = objects[0]
+        assert isinstance(profile, AuthorProfile)
+        assert profile.author == existing_author
+        assert profile.website == "https://external.example.com"
+        assert profile.settings == {"external": True}
+
+    def test_load_with_onetoone_json_reference(self):
+        """Test OneToOne relationship with JSON field containing references."""
+
+        def resolver(ref):
+            return None
+
+        loader = ModelLoader(resolver=resolver)
+
+        # Create two authors
+        author1_key = Key(type="author", value="json_author1")
+        author2_key = Key(type="author", value="json_author2")
+        profile_key = Key(type="profile", value="json_profile")
+
+        author1_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "JSON Author 1",
+                "email": "json1@example.com",
+            },
+        )
+
+        author2_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "JSON Author 2",
+                "email": "json2@example.com",
+            },
+        )
+
+        profile_spec = Spec(
+            content_type="testapp.AuthorProfile",
+            attributes={
+                "author": Ref(author1_key),
+                "website": "https://jsontest.example.com",
+                "settings": {
+                    "preferred_collaborator": Ref(author2_key),  # Ref in JSON
+                    "theme": "light",
+                },
+            },
+        )
+
+        objects = loader.load(
+            [
+                (author1_key, author1_spec),
+                (author2_key, author2_spec),
+                (profile_key, profile_spec),
+            ]
+        )
+
+        assert len(objects) == 3
+        author1 = next(obj for obj in objects if obj.name == "JSON Author 1")
+        author2 = next(obj for obj in objects if obj.name == "JSON Author 2")
+        profile = next(obj for obj in objects if isinstance(obj, AuthorProfile))
+
+        # Check OneToOne and JSON reference resolution
+        assert profile.author == author1
+        assert profile.settings["preferred_collaborator"] == author2.pk
+        assert profile.settings["theme"] == "light"
 
     def test_load_empty_specs(self):
         """Test that loading empty specs returns empty list."""

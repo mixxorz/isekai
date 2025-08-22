@@ -134,7 +134,9 @@ class ModelLoader(BaseLoader):
                     obj_fields[field_name] = File(ContentFile(f.read()), file_ref.name)
 
             elif isinstance(field_value, Ref):
-                if field and isinstance(field, models.ForeignKey | ParentalKey):
+                if field and isinstance(
+                    field, models.ForeignKey | models.OneToOneField | ParentalKey
+                ):
                     if field_value.key in key_to_spec:
                         # Internal ref - use temp value, schedule for update
                         obj_fields[f"{field_name}_id"] = key_to_temp_fk[field_value.key]

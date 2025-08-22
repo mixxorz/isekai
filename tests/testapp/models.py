@@ -70,6 +70,19 @@ class Article(models.Model):
         return self.title
 
 
+class AuthorProfile(models.Model):
+    author = models.OneToOneField(Author, on_delete=models.CASCADE)
+    website = models.URLField(blank=True)
+    twitter_handle = models.CharField(max_length=50, blank=True)
+    settings = models.JSONField(blank=True, null=True)
+
+    class Meta:
+        app_label = "testapp"
+
+    def __str__(self):
+        return f"{self.author.name}'s Profile"
+
+
 class ConcreteResource(AbstractResource):
     seeders = [
         CSVSeeder(csv_filename="tests/files/test_data.csv"),

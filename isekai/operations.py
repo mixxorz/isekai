@@ -220,8 +220,15 @@ def mine(verbose: bool = False) -> None:
         logger.info(f"Mining completed: {mined_count} resources processed")
 
 
-def transform(verbose=None):
+def transform(verbose: bool = False) -> None:
+    """Transforms mined resources into target specifications."""
+    if verbose:
+        logger.setLevel(logging.INFO)
+
     transformer = Resource.transformer
+
+    if verbose:
+        logger.info(f"Using transformer: {transformer.__class__.__name__}")
 
     content_types = ContentType.objects.values_list("app_label", "model", "pk")
 
@@ -229,37 +236,56 @@ def transform(verbose=None):
 
     resources = Resource.objects.filter(status=Resource.Status.MINED)
 
+    if verbose:
+        logger.info(f"Found {resources.count()} mined resources to process")
+
     for resource in resources:
-        key = Key.from_string(resource.key)
-        if resource.data_type == "text":
-            resource_obj = TextResource(
-                mime_type=resource.mime_type,
-                text=resource.text_data,
-                metadata=resource.metadata or {},
-            )
-        else:
-            resource_obj = BlobResource(
-                mime_type=resource.mime_type,
-                filename=os.path.basename(resource.blob_data.name),
-                file_ref=FieldFileRef(ff=resource.blob_data),
-                metadata=resource.metadata or {},
-            )
+        if verbose:
+            logger.info(f"Transforming resource: {resource.key}")
 
-        spec = transformer.transform(key, resource_obj)
+        try:
+            key = Key.from_string(resource.key)
+            if resource.data_type == "text":
+                resource_obj = TextResource(
+                    mime_type=resource.mime_type,
+                    text=resource.text_data,
+                    metadata=resource.metadata or {},
+                )
+            else:
+                resource_obj = BlobResource(
+                    mime_type=resource.mime_type,
+                    filename=os.path.basename(resource.blob_data.name),
+                    file_ref=FieldFileRef(ff=resource.blob_data),
+                    metadata=resource.metadata or {},
+                )
 
-        if spec:
-            try:
-                content_type = ct_map[spec.content_type.lower()]
-            except KeyError as e:
-                raise TransformError(
-                    f"Unknown content type: {spec.content_type}"
-                ) from e
+            spec = transformer.transform(key, resource_obj)
 
-            spec_dict = spec.to_dict()
-            resource.target_content_type_id = content_type
-            resource.target_spec = spec_dict["attributes"]
+            if spec:
+                try:
+                    content_type = ct_map[spec.content_type.lower()]
+                except KeyError as e:
+                    raise TransformError(
+                        f"Unknown content type: {spec.content_type}"
+                    ) from e
 
-            resource.transition_to(Resource.Status.TRANSFORMED)
+                spec_dict = spec.to_dict()
+                resource.target_content_type_id = content_type
+                resource.target_spec = spec_dict["attributes"]
+
+                resource.transition_to(Resource.Status.TRANSFORMED)
+
+                if verbose:
+                    logger.info(f"Successfully transformed: {resource.key}")
+
+        except Exception as e:
+            resource.last_error = f"{e.__class__.__name__}: {str(e)}"
+
+            if verbose:
+                logger.error(f"Failed to transform {resource.key}: {e}")
+
+    if verbose:
+        logger.info("Saving changes to database...")
 
     Resource.objects.bulk_update(
         resources,
@@ -271,3 +297,12 @@ def transform(verbose=None):
             "last_error",
         ],
     )
+
+    if verbose:
+        transformed_count = sum(
+            1 for r in resources if r.status == Resource.Status.TRANSFORMED
+        )
+        error_count = sum(1 for r in resources if r.last_error)
+        logger.info(
+            f"Transformation completed: {transformed_count} successful, {error_count} errors"
+        )

@@ -1,8 +1,9 @@
 import io
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any, Protocol
+from typing import IO, TYPE_CHECKING, Any, Protocol, overload
 
 if TYPE_CHECKING:
     from django.db.models import FieldFile
@@ -53,13 +54,20 @@ class TextResource:
     metadata: Mapping[str, Any]
 
 
+# TODO: Rename this to proxies
 class FileRef(Protocol):
+    @property
+    def name(self) -> str: ...
     def open(self) -> IO[bytes]: ...
 
 
 @dataclass(frozen=True)
 class PathFileRef:
     path: Path
+
+    @property
+    def name(self) -> str:
+        return self.path.name
 
     def open(self) -> IO[bytes]:
         return self.path.open("rb")
@@ -69,6 +77,10 @@ class PathFileRef:
 class FieldFileRef:
     ff: "FieldFile"
 
+    @property
+    def name(self) -> str:
+        return os.path.basename(self.ff.name)
+
     def open(self) -> IO[bytes]:
         return self.ff.storage.open(self.ff.name, mode="rb")
 
@@ -76,6 +88,10 @@ class FieldFileRef:
 @dataclass(frozen=True)
 class InMemoryFileRef:
     content: bytes
+
+    @property
+    def name(self):
+        return "in_memory_file"
 
     def open(self) -> IO[bytes]:
         return io.BytesIO(self.content)
@@ -185,6 +201,18 @@ class BlobRef(Ref):
     """
 
     _prefix = "isekai-blob-ref:\\"
+
+
+class Resolver(Protocol):
+    """
+    A resolver function that takes a Ref and returns the database PK for that
+    resource, or a FileRef if the ref is a BlobRef.
+    """
+
+    @overload
+    def __call__(self, ref: BlobRef) -> FileRef: ...
+    @overload
+    def __call__(self, ref: Ref) -> int | str: ...
 
 
 # Exceptions

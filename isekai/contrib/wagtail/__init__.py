@@ -24,11 +24,12 @@ class ImageTransformer(BaseTransformer):
             return None
 
         # Create a Wagtail Image spec
+        # TODO: Wagtail Image requires width and height
         return Spec(
             content_type=get_image_model_string(),
             attributes={
                 "title": resource.filename,
-                "file": BlobRef(key),
+                "file": BlobRef(key),  # Reference itself
                 "description": resource.metadata.get("alt_text", ""),
             },
         )

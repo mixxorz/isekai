@@ -1,3 +1,5 @@
+from django.db import models
+
 from isekai.contrib.wagtail import ImageTransformer
 from isekai.extractors import BaseExtractor, HTTPExtractor
 from isekai.miners import HTMLImageMiner
@@ -27,6 +29,45 @@ class FooBarTransformer(BaseTransformer):
                 "email": "foo@bar.com",
             },
         )
+
+
+# Test models for ModelLoader testing
+class Author(models.Model):
+    name = models.CharField(max_length=100)
+    email = models.EmailField()
+    bio = models.JSONField(blank=True, null=True)
+
+    class Meta:
+        app_label = "testapp"
+
+    def __str__(self):
+        return self.name
+
+
+class Tag(models.Model):
+    name = models.CharField(max_length=50)
+    color = models.CharField(max_length=7, default="#000000")  # hex color
+
+    class Meta:
+        app_label = "testapp"
+
+    def __str__(self):
+        return self.name
+
+
+class Article(models.Model):
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    author = models.ForeignKey(Author, on_delete=models.CASCADE)
+    tags = models.ManyToManyField(Tag, blank=True)
+    metadata = models.JSONField(blank=True, null=True)
+    published_date = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "testapp"
+
+    def __str__(self):
+        return self.title
 
 
 class ConcreteResource(AbstractResource):

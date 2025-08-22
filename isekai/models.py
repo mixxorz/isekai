@@ -11,7 +11,6 @@ from isekai.miners import BaseMiner
 from isekai.seeders import BaseSeeder
 from isekai.transformers import BaseTransformer
 from isekai.types import BlobResource, FieldFileRef, TextResource, TransitionError
-from tests.conftest import os
 
 
 class AbstractResource(models.Model):
@@ -137,10 +136,11 @@ class AbstractResource(models.Model):
                 metadata=self.metadata or {},
             )
         else:
+            file_ref = FieldFileRef(ff=self.blob_data)
             resource_obj = BlobResource(
                 mime_type=self.mime_type,
-                filename=os.path.basename(self.blob_data.name),
-                file_ref=FieldFileRef(ff=self.blob_data),
+                filename=file_ref.name,
+                file_ref=file_ref,
                 metadata=self.metadata or {},
             )
 

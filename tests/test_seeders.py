@@ -48,54 +48,26 @@ class TestSitemapSeeder:
             status=200,
         )
 
-        responses.add(
-            responses.GET,
-            "https://example.com/jp/sitemap.xml",
-            body="""<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-    <url><loc>https://example.com/jp/page1</loc></url>
-    <url><loc>https://example.com/jp/page2</loc></url>
-    <url><loc>https://example.com/jp/page3</loc></url>
-    <url><loc>https://example.com/jp/page4</loc></url>
-    <url><loc>https://example.com/jp/page5</loc></url>
-</urlset>""",
-            status=200,
-        )
-
         seeder = SitemapSeeder(
-            sitemaps=[
-                "https://example.com/sitemap.xml",
-                "https://example.com/jp/sitemap.xml",
-            ]
+            sitemap_url="https://example.com/sitemap.xml",
         )
 
         seeded_resources = seeder.seed()
 
-        assert len(seeded_resources) == 10
+        assert len(seeded_resources) == 5
         assert str(seeded_resources[0].key) == "url:https://example.com/page1"
         assert str(seeded_resources[1].key) == "url:https://example.com/page2"
         assert str(seeded_resources[2].key) == "url:https://example.com/page3"
         assert str(seeded_resources[3].key) == "url:https://example.com/page4"
         assert str(seeded_resources[4].key) == "url:https://example.com/page5"
-        assert str(seeded_resources[5].key) == "url:https://example.com/jp/page1"
-        assert str(seeded_resources[6].key) == "url:https://example.com/jp/page2"
-        assert str(seeded_resources[7].key) == "url:https://example.com/jp/page3"
-        assert str(seeded_resources[8].key) == "url:https://example.com/jp/page4"
-        assert str(seeded_resources[9].key) == "url:https://example.com/jp/page5"
 
     def test_class_attrs(self):
         class Seeder(SitemapSeeder):
-            sitemaps = [
-                "https://example.com/sitemap.xml",
-                "https://example.com/jp/sitemap.xml",
-            ]
+            sitemap_url = "https://example.com/sitemap.xml"
 
         seeder = Seeder()
 
-        assert seeder.sitemaps == [
-            "https://example.com/sitemap.xml",
-            "https://example.com/jp/sitemap.xml",
-        ]
+        assert seeder.sitemap_url == "https://example.com/sitemap.xml"
 
 
 @pytest.mark.django_db

@@ -51,26 +51,30 @@ class SitemapSeeder(BaseSeeder):
     returning them as 'url:{url}' keys.
     """
 
-    sitemaps: list[str] = []
+    sitemap_url: str
 
-    def __init__(self, sitemaps: list[str] | None = None):
-        self.sitemaps = sitemaps or self.sitemaps
+    def __init__(self, sitemap_url: str | None = None):
+        self.sitemap_url = sitemap_url or self.sitemap_url
+
+        if self.sitemap_url is None:
+            raise ValueError(
+                "sitemap must be provided either as parameter or class attribute"
+            )
 
     def seed(self) -> list[SeededResource]:
-        resources = super().seed()
+        resources = []
 
-        for sitemap_url in self.sitemaps:
-            response = requests.get(sitemap_url)
-            response.raise_for_status()
+        response = requests.get(self.sitemap_url)
+        response.raise_for_status()
 
-            root = ET.fromstring(response.content)
-            # Handle XML namespace for sitemap
-            namespaces = {"sitemap": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+        root = ET.fromstring(response.content)
+        # Handle XML namespace for sitemap
+        namespaces = {"sitemap": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 
-            for url_elem in root.findall("sitemap:url", namespaces):
-                loc_elem = url_elem.find("sitemap:loc", namespaces)
-                if loc_elem is not None and loc_elem.text:
-                    key = Key(type="url", value=loc_elem.text)
-                    resources.append(SeededResource(key=key, metadata={}))
+        for url_elem in root.findall("sitemap:url", namespaces):
+            loc_elem = url_elem.find("sitemap:loc", namespaces)
+            if loc_elem is not None and loc_elem.text:
+                key = Key(type="url", value=loc_elem.text)
+                resources.append(SeededResource(key=key, metadata={}))
 
         return resources

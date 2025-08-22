@@ -20,12 +20,8 @@ class Transformer(ImageTransformer):
 class ConcreteResource(AbstractResource):
     seeders = [
         CSVSeeder(csv_filename="tests/files/test_data.csv"),
-        SitemapSeeder(
-            sitemaps=[
-                "https://example.com/sitemap.xml",
-                "https://example.com/jp/sitemap.xml",
-            ]
-        ),
+        SitemapSeeder(sitemap_url="https://example.com/sitemap.xml"),
+        SitemapSeeder(sitemap_url="https://example.com/jp/sitemap.xml"),
     ]
     extractors = [HTTPExtractor()]
     miners = [HTMLImageMiner(allowed_domains=["*"])]

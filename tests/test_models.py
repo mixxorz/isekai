@@ -54,7 +54,10 @@ class TestAbstractResource:
         )
         assert resource.target_object == user
 
-    def test_transition_to_extracted_with_text_data(self):
+
+@pytest.mark.django_db
+class TestSeededToExtractedTransition:
+    def test_transition_with_text_data(self):
         """Test successful transition from SEEDED to EXTRACTED with text data"""
         resource = ConcreteResource.objects.create(
             key="test-key", text_data="some text", data_type="text"
@@ -66,7 +69,7 @@ class TestAbstractResource:
         assert resource.extracted_at is not None
         assert resource.last_error == ""
 
-    def test_transition_to_extracted_with_blob_data(self):
+    def test_transition_with_blob_data(self):
         """Test successful transition from SEEDED to EXTRACTED with blob data"""
         resource = ConcreteResource.objects.create(key="test-key")
         resource.blob_data.save("test.txt", ContentFile(b"blob content"))
@@ -79,7 +82,7 @@ class TestAbstractResource:
         assert resource.extracted_at is not None
         assert resource.last_error == ""
 
-    def test_transition_to_extracted_without_data_fails(self):
+    def test_transition_without_data_fails(self):
         """Test that transition from SEEDED to EXTRACTED fails without data"""
         resource = ConcreteResource.objects.create(key="test-key")
 
@@ -90,33 +93,6 @@ class TestAbstractResource:
 
         assert resource.status == ConcreteResource.Status.SEEDED
         assert resource.extracted_at is None
-
-    def test_transition_to_mined_from_extracted(self):
-        """Test successful transition from EXTRACTED to MINED"""
-        resource = ConcreteResource.objects.create(
-            key="test-key",
-            status=ConcreteResource.Status.EXTRACTED,
-            text_data="some text",
-            data_type="text",
-        )
-
-        resource.transition_to(ConcreteResource.Status.MINED)
-
-        assert resource.status == ConcreteResource.Status.MINED
-        assert resource.mined_at is not None
-        assert resource.last_error == ""
-
-    def test_transition_invalid_status_progression_fails(self):
-        """Test that invalid status transitions raise TransitionError"""
-        resource = ConcreteResource.objects.create(key="test-key")
-
-        # Try to go directly from SEEDED to MINED (should fail)
-        with pytest.raises(
-            TransitionError, match="Cannot transition from seeded to mined"
-        ):
-            resource.transition_to(ConcreteResource.Status.MINED)
-
-        assert resource.status == ConcreteResource.Status.SEEDED
 
     def test_transition_clears_last_error(self):
         """Test that successful transitions clear the last_error field"""
@@ -131,3 +107,57 @@ class TestAbstractResource:
 
         assert resource.status == ConcreteResource.Status.EXTRACTED
         assert resource.last_error == ""
+
+
+@pytest.mark.django_db
+class TestExtractedToMinedTransition:
+    def test_transition_from_extracted(self):
+        """Test successful transition from EXTRACTED to MINED"""
+        resource = ConcreteResource.objects.create(
+            key="test-key",
+            status=ConcreteResource.Status.EXTRACTED,
+            text_data="some text",
+            data_type="text",
+        )
+
+        resource.transition_to(ConcreteResource.Status.MINED)
+
+        assert resource.status == ConcreteResource.Status.MINED
+        assert resource.mined_at is not None
+        assert resource.last_error == ""
+
+
+@pytest.mark.django_db
+class TestInvalidTransitions:
+    def test_seeded_to_mined_fails(self):
+        """Test that transition from SEEDED to MINED fails"""
+        resource = ConcreteResource.objects.create(key="test-key")
+
+        with pytest.raises(
+            TransitionError, match="Cannot transition from seeded to mined"
+        ):
+            resource.transition_to(ConcreteResource.Status.MINED)
+
+        assert resource.status == ConcreteResource.Status.SEEDED
+
+    def test_seeded_to_transformed_fails(self):
+        """Test that transition from SEEDED to TRANSFORMED fails"""
+        resource = ConcreteResource.objects.create(key="test-key")
+
+        with pytest.raises(
+            TransitionError, match="Cannot transition from seeded to transformed"
+        ):
+            resource.transition_to(ConcreteResource.Status.TRANSFORMED)
+
+        assert resource.status == ConcreteResource.Status.SEEDED
+
+    def test_seeded_to_loaded_fails(self):
+        """Test that transition from SEEDED to LOADED fails"""
+        resource = ConcreteResource.objects.create(key="test-key")
+
+        with pytest.raises(
+            TransitionError, match="Cannot transition from seeded to loaded"
+        ):
+            resource.transition_to(ConcreteResource.Status.LOADED)
+
+        assert resource.status == ConcreteResource.Status.SEEDED

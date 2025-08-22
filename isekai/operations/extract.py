@@ -42,7 +42,7 @@ def extract(verbose: bool = False) -> None:
 
                 # Merge metadata
                 if resource.metadata is None:
-                    resource.metadata = {}  # type: ignore[assignment]
+                    resource.metadata = {}
 
                 resource.metadata.update(dict(extracted_resource.metadata))
 

@@ -1,4 +1,3 @@
-from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Literal
 
 from django.contrib.contenttypes.fields import GenericForeignKey
@@ -34,7 +33,7 @@ class AbstractResource(models.Model):
     text_data = models.TextField(
         blank=True,
     )
-    metadata = models.JSONField(blank=True, null=True)
+    metadata: dict[str, Any] = models.JSONField(blank=True, null=True)  # type: ignore[assignment]
 
     # Resources this resource depends on
     dependencies = models.ManyToManyField(
@@ -48,7 +47,7 @@ class AbstractResource(models.Model):
     target_content_type = models.ForeignKey(
         ContentType, on_delete=models.CASCADE, blank=True, null=True
     )
-    target_spec: Mapping[str, Any] = models.JSONField(blank=True, null=True)  # type: ignore[assignment]
+    target_spec: dict[str, Any] = models.JSONField(blank=True, null=True)  # type: ignore[assignment]
     target_object_id = models.PositiveIntegerField(blank=True, null=True)
     target_object = GenericForeignKey("target_content_type", "target_object_id")
 

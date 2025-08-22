@@ -1,19 +1,25 @@
+from typing import overload
+
 import pytest
-from wagtail.images import get_image_model
+from wagtail.images.models import Image
 
 from isekai.loaders import ModelLoader
 from isekai.types import BlobRef, FileRef, InMemoryFileRef, Key, Ref, Spec
 from tests.testapp.models import Article, Author, AuthorProfile, Tag
 
-Image = get_image_model()
-
 
 @pytest.mark.django_db
 class TestModelLoader:
     def test_load_spec_with_blob(self):
-        def resolver(ref) -> FileRef:
+        @overload
+        def resolver(ref: BlobRef) -> FileRef: ...
+        @overload
+        def resolver(ref: Ref) -> int | str: ...
+
+        def resolver(ref: Ref) -> FileRef | int | str:
             with open("tests/files/blue_square.jpg", "rb") as f:
-                return InMemoryFileRef(content=f.read())
+                return InMemoryFileRef(f.read())
+            raise AssertionError(f"Unexpected ref: {ref}")
 
         loader = ModelLoader(resolver=resolver)
 
@@ -29,22 +35,23 @@ class TestModelLoader:
 
         objects = loader.load([(key, spec)])
 
-        assert isinstance(objects[0], Image)
-        assert objects[0].title == "blue_square.jpg"
-        assert objects[0].description == "A sample image"
+        image = objects[0]
+        assert isinstance(image, Image)
+        assert image.title == "blue_square.jpg"
+        assert image.description == "A sample image"
 
         with open("tests/files/blue_square.jpg", "rb") as f:
             expected_content = f.read()
 
         # Read from the saved file to compare content
-        with objects[0].file.open() as saved_file:
+        with image.file.open() as saved_file:
             assert saved_file.read() == expected_content
 
     def test_load_simple_model(self):
         """Test loading a simple model without relationships."""
 
         def resolver(ref):
-            return None  # No refs in this test
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
         loader = ModelLoader(resolver=resolver)
 
@@ -71,8 +78,7 @@ class TestModelLoader:
         """Test loading models with foreign key relationships."""
 
         def resolver(ref):
-            # This would normally resolve external refs, but our test uses internal refs
-            return None
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
         loader = ModelLoader(resolver=resolver)
 
@@ -113,7 +119,7 @@ class TestModelLoader:
         """Test loading models with many-to-many relationships."""
 
         def resolver(ref):
-            return None
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
         loader = ModelLoader(resolver=resolver)
 
@@ -190,7 +196,7 @@ class TestModelLoader:
         """Test loading models with references in JSON fields."""
 
         def resolver(ref):
-            return None
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
         loader = ModelLoader(resolver=resolver)
 
@@ -224,13 +230,20 @@ class TestModelLoader:
         assert len(objects) == 2
 
         # Find objects
-        mentor = next(obj for obj in objects if obj.name == "Carol Mentor")
-        author = next(obj for obj in objects if obj.name == "Bob Writer")
+        mentor = next(
+            obj for obj in objects if getattr(obj, "name", None) == "Carol Mentor"
+        )
+        author = next(
+            obj for obj in objects if getattr(obj, "name", None) == "Bob Writer"
+        )
 
         # Check JSON field reference resolution
-        assert author.bio["mentor"] == mentor.pk
-        assert author.bio["description"] == "Experienced writer"
-        assert author.bio["favorite_topics"] == ["Python", "Django"]
+        assert isinstance(author, Author)
+        author_bio = author.bio
+        assert author_bio is not None
+        assert author_bio["mentor"] == mentor.pk
+        assert author_bio["description"] == "Experienced writer"
+        assert author_bio["favorite_topics"] == ["Python", "Django"]
 
     def test_load_with_external_reference(self):
         """Test loading models that reference existing objects via resolver."""
@@ -241,10 +254,9 @@ class TestModelLoader:
         )
 
         def resolver(ref):
-            # Resolve external author reference
             if ref.key.type == "author" and ref.key.value == "existing_author":
                 return existing_author.pk
-            return None
+            raise AssertionError(f"Unexpected ref: {ref}")
 
         loader = ModelLoader(resolver=resolver)
 
@@ -272,7 +284,7 @@ class TestModelLoader:
         """Test loading models with circular references."""
 
         def resolver(ref):
-            return None
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
         loader = ModelLoader(resolver=resolver)
 
@@ -310,13 +322,15 @@ class TestModelLoader:
 
         # Check circular references are resolved correctly
         assert article.author == author
-        assert author.bio["featured_article"] == article.pk
+        author_bio = author.bio
+        assert author_bio is not None
+        assert author_bio["featured_article"] == article.pk
 
     def test_load_with_self_reference(self):
         """Test loading models with self-references."""
 
         def resolver(ref):
-            return None
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
         loader = ModelLoader(resolver=resolver)
 
@@ -346,10 +360,17 @@ class TestModelLoader:
         objects = loader.load([(mentor_key, mentor_spec), (student_key, student_spec)])
 
         assert len(objects) == 2
-        mentor = next(obj for obj in objects if obj.name == "Mentor Author")
-        student = next(obj for obj in objects if obj.name == "Student Author")
+        mentor = next(
+            obj for obj in objects if getattr(obj, "name", None) == "Mentor Author"
+        )
+        student = next(
+            obj for obj in objects if getattr(obj, "name", None) == "Student Author"
+        )
 
-        assert student.bio["mentor"] == mentor.pk
+        assert isinstance(student, Author)
+        student_bio = student.bio
+        assert student_bio is not None
+        assert student_bio["mentor"] == mentor.pk
 
     def test_load_with_mixed_internal_external_m2m(self):
         """Test M2M fields with both internal and external references."""
@@ -359,7 +380,7 @@ class TestModelLoader:
         def resolver(ref):
             if ref.key.type == "tag" and ref.key.value == "existing_tag":
                 return existing_tag.pk
-            return None
+            raise AssertionError(f"Unexpected ref: {ref}")
 
         loader = ModelLoader(resolver=resolver)
 
@@ -421,7 +442,7 @@ class TestModelLoader:
         """Test loading with empty lists, null values, and empty objects."""
 
         def resolver(ref):
-            return None
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
         loader = ModelLoader(resolver=resolver)
 
@@ -463,7 +484,7 @@ class TestModelLoader:
         """Test loading models with OneToOne field relationships."""
 
         def resolver(ref):
-            return None
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
         loader = ModelLoader(resolver=resolver)
 
@@ -513,7 +534,7 @@ class TestModelLoader:
         def resolver(ref):
             if ref.key.type == "author" and ref.key.value == "existing_oto_author":
                 return existing_author.pk
-            return None
+            raise AssertionError(f"Unexpected ref: {ref}")
 
         loader = ModelLoader(resolver=resolver)
 
@@ -540,7 +561,7 @@ class TestModelLoader:
         """Test OneToOne relationship with JSON field containing references."""
 
         def resolver(ref):
-            return None
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
         loader = ModelLoader(resolver=resolver)
 
@@ -586,20 +607,26 @@ class TestModelLoader:
         )
 
         assert len(objects) == 3
-        author1 = next(obj for obj in objects if obj.name == "JSON Author 1")
-        author2 = next(obj for obj in objects if obj.name == "JSON Author 2")
+        author1 = next(
+            obj for obj in objects if getattr(obj, "name", None) == "JSON Author 1"
+        )
+        author2 = next(
+            obj for obj in objects if getattr(obj, "name", None) == "JSON Author 2"
+        )
         profile = next(obj for obj in objects if isinstance(obj, AuthorProfile))
 
         # Check OneToOne and JSON reference resolution
         assert profile.author == author1
-        assert profile.settings["preferred_collaborator"] == author2.pk
-        assert profile.settings["theme"] == "light"
+        profile_settings = profile.settings
+        assert profile_settings is not None
+        assert profile_settings["preferred_collaborator"] == author2.pk
+        assert profile_settings["theme"] == "light"
 
     def test_load_empty_specs(self):
         """Test that loading empty specs returns empty list."""
 
         def resolver(ref):
-            return None
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
         loader = ModelLoader(resolver=resolver)
         objects = loader.load([])

@@ -91,11 +91,10 @@ ignore = [
 known-first-party = ["isekai"]
 
 [tool.pyright]
-include = ["isekai"]
+include = ["isekai", "tests"]
 exclude = [
     "**/node_modules",
     "**/__pycache__",
-    "tests",
     "dev",
 ]
 pythonVersion = "3.11"

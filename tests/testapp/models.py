@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 from django.db import models
 
 from isekai.contrib.wagtail import ImageTransformer
@@ -36,6 +38,9 @@ class Author(models.Model):
     name = models.CharField(max_length=100)
     email = models.EmailField()
     bio = models.JSONField(blank=True, null=True)
+
+    if TYPE_CHECKING:
+        authorprofile: "AuthorProfile"
 
     class Meta:
         app_label = "testapp"

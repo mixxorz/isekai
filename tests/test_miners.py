@@ -1,10 +1,10 @@
 import pytest
 from django.utils import timezone
+from freezegun import freeze_time
 
 from isekai.miners import HTMLImageMiner
 from isekai.operations.mine import mine
 from isekai.types import Key, TextResource
-from tests.test_seeders import freeze_time
 from tests.testapp.models import ConcreteResource
 
 

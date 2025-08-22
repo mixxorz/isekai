@@ -1,9 +1,17 @@
 import logging
-from typing import cast
+import os
 
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
 
-from isekai.types import BlobResource, FieldFileRef, Key, PathFileRef, TextResource
+from isekai.types import (
+    BlobResource,
+    FieldFileRef,
+    Key,
+    PathFileRef,
+    TextResource,
+    TransformError,
+)
 from isekai.utils import get_resource_model
 
 Resource = get_resource_model()
@@ -160,13 +168,13 @@ def mine(verbose: bool = False) -> None:
         if resource.data_type == "text":
             resource_obj = TextResource(
                 mime_type=resource.mime_type,
-                text=cast(str, resource.text_data),
+                text=resource.text_data,
                 metadata=resource.metadata or {},
             )
         else:
             resource_obj = BlobResource(
                 mime_type=resource.mime_type,
-                filename=resource.blob_data.name,
+                filename=os.path.basename(resource.blob_data.name),
                 file_ref=FieldFileRef(ff=resource.blob_data),
                 metadata=resource.metadata or {},
             )
@@ -210,3 +218,56 @@ def mine(verbose: bool = False) -> None:
     if verbose:
         mined_count = len(resources)
         logger.info(f"Mining completed: {mined_count} resources processed")
+
+
+def transform(verbose=None):
+    transformer = Resource.transformer
+
+    content_types = ContentType.objects.values_list("app_label", "model", "pk")
+
+    ct_map = {f"{app_label}.{model}": pk for app_label, model, pk in content_types}
+
+    resources = Resource.objects.filter(status=Resource.Status.MINED)
+
+    for resource in resources:
+        key = Key.from_string(resource.key)
+        if resource.data_type == "text":
+            resource_obj = TextResource(
+                mime_type=resource.mime_type,
+                text=resource.text_data,
+                metadata=resource.metadata or {},
+            )
+        else:
+            resource_obj = BlobResource(
+                mime_type=resource.mime_type,
+                filename=os.path.basename(resource.blob_data.name),
+                file_ref=FieldFileRef(ff=resource.blob_data),
+                metadata=resource.metadata or {},
+            )
+
+        spec = transformer.transform(key, resource_obj)
+
+        if spec:
+            try:
+                content_type = ct_map[spec.content_type.lower()]
+            except KeyError as e:
+                raise TransformError(
+                    f"Unknown content type: {spec.content_type}"
+                ) from e
+
+            spec_dict = spec.to_dict()
+            resource.target_content_type_id = content_type
+            resource.target_spec = spec_dict["attributes"]
+
+            resource.transition_to(Resource.Status.TRANSFORMED)
+
+    Resource.objects.bulk_update(
+        resources,
+        [
+            "target_content_type_id",
+            "target_spec",
+            "status",
+            "transformed_at",
+            "last_error",
+        ],
+    )

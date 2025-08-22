@@ -1,4 +1,5 @@
-from typing import Literal
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, Literal
 
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -8,6 +9,7 @@ from django.utils import timezone
 from isekai.extractors import BaseExtractor
 from isekai.miners import BaseMiner
 from isekai.seeders import BaseSeeder
+from isekai.transformers import BaseTransformer
 from isekai.types import TransitionError
 
 
@@ -46,9 +48,9 @@ class AbstractResource(models.Model):
     target_content_type = models.ForeignKey(
         ContentType, on_delete=models.CASCADE, blank=True, null=True
     )
+    target_spec: Mapping[str, Any] = models.JSONField(blank=True, null=True)  # type: ignore[assignment]
     target_object_id = models.PositiveIntegerField(blank=True, null=True)
     target_object = GenericForeignKey("target_content_type", "target_object_id")
-    target_spec = models.JSONField(blank=True, null=True)
 
     # Audit fields
     status = models.CharField(
@@ -69,6 +71,11 @@ class AbstractResource(models.Model):
     seeder = BaseSeeder()
     extractor = BaseExtractor()
     miner = BaseMiner()
+    transformer = BaseTransformer()
+
+    # Types
+    if TYPE_CHECKING:
+        target_content_type_id: int | None
 
     class Meta:
         abstract = True
@@ -100,6 +107,13 @@ class AbstractResource(models.Model):
             self.last_error = ""
             self.status = next_status
             self.mined_at = timezone.now()
+        elif (
+            self.status == self.Status.MINED and next_status == self.Status.TRANSFORMED
+        ):
+            # TODO: Fail if no target spec
+            self.last_error = ""
+            self.status = next_status
+            self.transformed_at = timezone.now()
         else:
             raise TransitionError(
                 f"Cannot transition from {self.status} to {next_status}"

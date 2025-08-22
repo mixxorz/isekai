@@ -1,7 +1,4 @@
-from wagtail.admin.panels import FieldPanel
-from wagtail.fields import RichTextField
-from wagtail.models import Page
-
+from isekai.contrib.wagtail import ImageTransformer
 from isekai.extractors import HTTPExtractor
 from isekai.miners import HTMLImageMiner
 from isekai.models import AbstractResource
@@ -24,23 +21,17 @@ class Miner(HTMLImageMiner):
     allowed_domains = ["*"]
 
 
+class Transformer(ImageTransformer):
+    pass
+
+
 class ConcreteResource(AbstractResource):
     seeder = Seeder()
     extractor = Extractor()
     miner = Miner()
+    transformer = Transformer()
 
     class Meta:
         app_label = "testapp"
         verbose_name = "Concrete Resource"
         verbose_name_plural = "Concrete Resources"
-
-
-class HomePage(Page):
-    body = RichTextField(blank=True)
-
-    content_panels = Page.content_panels + [
-        FieldPanel("body"),
-    ]
-
-    class Meta:
-        app_label = "testapp"

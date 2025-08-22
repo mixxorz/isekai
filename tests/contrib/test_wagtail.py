@@ -26,9 +26,25 @@ class TestWagtailImageTransformer:
         spec = transformer.transform(key, resource)
 
         assert spec
-        assert spec.content_type == "wagtail.Image"
+        assert spec.content_type == "wagtailimages.Image"
         assert spec.attributes == {
             "title": "image.png",
             "file": BlobRef(key),
             "description": "A red pixel",
         }
+
+    def test_disallowed_mime_types(self):
+        transformer = ImageTransformer()
+
+        key = Key(type="url", value="https://example.com/image.txt")
+
+        resource = BlobResource(
+            mime_type="text/plain",
+            filename="image.txt",
+            file_ref=InMemoryFileRef(content=b"Not an image"),
+            metadata={},
+        )
+
+        spec = transformer.transform(key, resource)
+
+        assert spec is None

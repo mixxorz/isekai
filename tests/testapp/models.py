@@ -3,7 +3,8 @@ from isekai.extractors import BaseExtractor, HTTPExtractor
 from isekai.miners import HTMLImageMiner
 from isekai.models import AbstractResource
 from isekai.seeders import CSVSeeder, SitemapSeeder
-from isekai.types import TextResource
+from isekai.transformers import BaseTransformer
+from isekai.types import Spec, TextResource
 
 
 class FooBarExtractor(BaseExtractor):
@@ -12,6 +13,20 @@ class FooBarExtractor(BaseExtractor):
             return None
 
         return TextResource(mime_type="foo/bar", text="foo bar data", metadata={})
+
+
+class FooBarTransformer(BaseTransformer):
+    def transform(self, key, resource):
+        if resource.mime_type != "foo/bar":
+            return None
+
+        return Spec(
+            content_type="auth.User",
+            attributes={
+                "username": "foobar_user",
+                "email": "foo@bar.com",
+            },
+        )
 
 
 class ConcreteResource(AbstractResource):
@@ -25,7 +40,10 @@ class ConcreteResource(AbstractResource):
         FooBarExtractor(),
     ]
     miners = [HTMLImageMiner(allowed_domains=["*"])]
-    transformers = [ImageTransformer()]
+    transformers = [
+        ImageTransformer(),
+        FooBarTransformer(),
+    ]
 
     class Meta:
         app_label = "testapp"

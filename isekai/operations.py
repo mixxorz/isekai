@@ -6,7 +6,9 @@ from django.core.files.base import ContentFile
 from isekai.types import (
     BlobResource,
     Key,
+    MinedResource,
     PathFileRef,
+    SeededResource,
     TextResource,
     TransformError,
 )
@@ -21,12 +23,14 @@ def seed(verbose: bool = False) -> None:
     if verbose:
         logger.setLevel(logging.INFO)
 
-    seeder = Resource.seeder
+    seeders = Resource.seeders
 
     if verbose:
-        logger.info(f"Using seeder: {seeder.__class__.__name__}")
+        logger.info(f"Using {len(seeders)} seeders to seed resources")
 
-    seeded_resources = seeder.seed()
+    seeded_resources: list[SeededResource] = []
+    for seeder in seeders:
+        seeded_resources.extend(seeder.seed())
 
     if verbose:
         logger.info(f"Found {len(seeded_resources)} resources from seeder")
@@ -56,7 +60,7 @@ def extract(verbose: bool = False) -> None:
     if verbose:
         logger.setLevel(logging.INFO)
 
-    extractor = Resource.extractor
+    extractors = Resource.extractors
 
     resources = Resource.objects.filter(status=Resource.Status.SEEDED)
 
@@ -69,7 +73,11 @@ def extract(verbose: bool = False) -> None:
 
         try:
             key = Key.from_string(resource.key)
-            extracted_resource = extractor.extract(key)
+
+            # Extract using the first extractor that can handle the resource
+            extracted_resource = next(
+                extractor.extract(key) for extractor in extractors
+            )
 
             if extracted_resource:
                 resource.mime_type = extracted_resource.mime_type
@@ -150,7 +158,7 @@ def mine(verbose: bool = False) -> None:
     if verbose:
         logger.setLevel(logging.INFO)
 
-    miner = Resource.miner
+    miners = Resource.miners
 
     resources = Resource.objects.filter(status=Resource.Status.EXTRACTED)
 
@@ -166,7 +174,10 @@ def mine(verbose: bool = False) -> None:
         resource_obj = resource.to_resource_dataclass()
 
         # Mine the resource
-        mined_resources = miner.mine(key, resource_obj)
+        mined_resources: list[MinedResource] = []
+
+        for miner in miners:
+            mined_resources.extend(miner.mine(key, resource_obj))
 
         if verbose:
             logger.info(
@@ -211,10 +222,10 @@ def transform(verbose: bool = False) -> None:
     if verbose:
         logger.setLevel(logging.INFO)
 
-    transformer = Resource.transformer
+    transformers = Resource.transformers
 
     if verbose:
-        logger.info(f"Using transformer: {transformer.__class__.__name__}")
+        logger.info(f"Found {len(transformers)} transformers to process resources")
 
     content_types = ContentType.objects.values_list("app_label", "model", "pk")
 
@@ -232,7 +243,9 @@ def transform(verbose: bool = False) -> None:
         try:
             key = Key.from_string(resource.key)
             resource_obj = resource.to_resource_dataclass()
-            spec = transformer.transform(key, resource_obj)
+            spec = next(
+                transformer.transform(key, resource_obj) for transformer in transformers
+            )
 
             if spec:
                 try:

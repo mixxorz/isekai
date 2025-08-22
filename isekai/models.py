@@ -69,10 +69,10 @@ class AbstractResource(models.Model):
     last_error = models.TextField(blank=True)
 
     # Processors
-    seeder = BaseSeeder()
-    extractor = BaseExtractor()
-    miner = BaseMiner()
-    transformer = BaseTransformer()
+    seeders: list[BaseSeeder] = []
+    extractors: list[BaseExtractor] = []
+    miners: list[BaseMiner] = []
+    transformers: list[BaseTransformer] = []
 
     # Types
     if TYPE_CHECKING:

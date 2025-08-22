@@ -10,15 +10,16 @@ from isekai.types import BlobRef, Key, Ref, Resolver, Spec
 
 
 class BaseLoader:
-    def __init__(self, resolver: Resolver):
-        self.resolve = resolver
-
-    def load(self, specs: list[tuple[Key, Spec]]) -> list[models.Model]:
+    def load(
+        self, specs: list[tuple[Key, Spec]], resolver: Resolver
+    ) -> list[models.Model]:
         return []
 
 
 class ModelLoader(BaseLoader):
-    def load(self, specs: list[tuple[Key, Spec]]) -> list[models.Model]:
+    def load(
+        self, specs: list[tuple[Key, Spec]], resolver: Resolver
+    ) -> list[models.Model]:
         """Creates Django objects from (Key, Spec) tuples with cross-references."""
         if not specs:
             return []
@@ -47,6 +48,7 @@ class ModelLoader(BaseLoader):
                     key_to_temp_fk,
                     pending_fks,
                     pending_m2ms,
+                    resolver,
                 )
                 key_to_object[key] = obj
                 created_objects.append(obj)
@@ -58,7 +60,9 @@ class ModelLoader(BaseLoader):
 
             # Update JSON fields with resolved refs
             for key, spec in specs:
-                self._update_json_fields(key_to_object[key], spec, key_to_object)
+                self._update_json_fields(
+                    key_to_object[key], spec, key_to_object, resolver
+                )
 
             # Set M2M relationships
             for obj_key, field_name, ref_values in pending_m2ms:
@@ -69,7 +73,7 @@ class ModelLoader(BaseLoader):
                         if ref.key in key_to_object:
                             resolved_ids.append(key_to_object[ref.key].pk)
                         else:
-                            resolved_ids.append(self.resolve(ref))
+                            resolved_ids.append(resolver(ref))
                     else:
                         resolved_ids.append(ref)
                 m2m_manager.set(resolved_ids)
@@ -109,6 +113,7 @@ class ModelLoader(BaseLoader):
         key_to_temp_fk,
         pending_fks,
         pending_m2ms,
+        resolver,
     ):
         """Create a single object with processed fields."""
         model_fields = {
@@ -129,7 +134,7 @@ class ModelLoader(BaseLoader):
 
             if isinstance(field_value, BlobRef):
                 # Handle blob fields immediately
-                file_ref = self.resolve(field_value)
+                file_ref = resolver(field_value)
                 with file_ref.open() as f:
                     obj_fields[field_name] = File(ContentFile(f.read()), file_ref.name)
 
@@ -143,7 +148,7 @@ class ModelLoader(BaseLoader):
                         pending_fks.append((key, f"{field_name}_id", field_value.key))
                     else:
                         # External ref - resolve immediately
-                        obj_fields[f"{field_name}_id"] = self.resolve(field_value)
+                        obj_fields[f"{field_name}_id"] = resolver(field_value)
                 else:
                     # Ref in non-FK field (likely JSON) - skip for now
                     pass
@@ -175,7 +180,7 @@ class ModelLoader(BaseLoader):
         obj.save()
         return obj
 
-    def _update_json_fields(self, obj, spec, key_to_object):
+    def _update_json_fields(self, obj, spec, key_to_object, resolver):
         """Update JSON fields with resolved references."""
         json_fields = [
             f for f in obj._meta.get_fields() if isinstance(f, models.JSONField)
@@ -186,7 +191,9 @@ class ModelLoader(BaseLoader):
             if json_field.name in spec.attributes:
                 field_value = spec.attributes[json_field.name]
                 # Always try to resolve - _resolve_refs returns unchanged if no refs
-                resolved_value = self._resolve_refs(field_value, key_to_object)
+                resolved_value = self._resolve_refs(
+                    field_value, key_to_object, resolver
+                )
                 if resolved_value != field_value:  # Only update if something changed
                     setattr(obj, json_field.name, resolved_value)
                     updated = True
@@ -204,17 +211,20 @@ class ModelLoader(BaseLoader):
             return any(self._has_refs(item) for item in data)
         return False
 
-    def _resolve_refs(self, data, key_to_object):
+    def _resolve_refs(self, data, key_to_object, resolver):
         """Recursively resolve Ref objects in nested data."""
         if isinstance(data, Ref):
             return (
                 key_to_object[data.key].pk
                 if data.key in key_to_object
-                else self.resolve(data)
+                else resolver(data)
             )
         elif isinstance(data, dict):
-            return {k: self._resolve_refs(v, key_to_object) for k, v in data.items()}
+            return {
+                k: self._resolve_refs(v, key_to_object, resolver)
+                for k, v in data.items()
+            }
         elif isinstance(data, list):
-            return [self._resolve_refs(item, key_to_object) for item in data]
+            return [self._resolve_refs(item, key_to_object, resolver) for item in data]
         else:
             return data

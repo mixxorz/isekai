@@ -6,6 +6,7 @@ from django.db import models
 from django.utils import timezone
 
 from isekai.extractors import BaseExtractor
+from isekai.loaders import BaseLoader
 from isekai.miners import BaseMiner
 from isekai.seeders import BaseSeeder
 from isekai.transformers import BaseTransformer
@@ -71,6 +72,7 @@ class AbstractResource(models.Model):
     extractors: list[BaseExtractor] = []
     miners: list[BaseMiner] = []
     transformers: list[BaseTransformer] = []
+    loaders: list[BaseLoader] = []
 
     # Types
     if TYPE_CHECKING:

@@ -1,11 +1,15 @@
 from typing import overload
 
 import pytest
+from django.contrib.contenttypes.models import ContentType
+from django.utils import timezone
+from freezegun import freeze_time
 from wagtail.images.models import Image
 
 from isekai.loaders import ModelLoader
+from isekai.operations.load import load
 from isekai.types import BlobRef, FileRef, InMemoryFileRef, Key, Ref, Spec
-from tests.testapp.models import Article, Author, AuthorProfile, Tag
+from tests.testapp.models import Article, Author, AuthorProfile, ConcreteResource, Tag
 
 
 @pytest.mark.django_db
@@ -21,7 +25,7 @@ class TestModelLoader:
                 return InMemoryFileRef(f.read())
             raise AssertionError(f"Unexpected ref: {ref}")
 
-        loader = ModelLoader(resolver=resolver)
+        loader = ModelLoader()
 
         key = Key(type="url", value="https://example.com/blue_square.jpg")
         spec = Spec(
@@ -33,7 +37,7 @@ class TestModelLoader:
             },
         )
 
-        objects = loader.load([(key, spec)])
+        objects = loader.load([(key, spec)], resolver)
 
         image = objects[0]
         assert isinstance(image, Image)
@@ -53,7 +57,7 @@ class TestModelLoader:
         def resolver(ref):
             raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
-        loader = ModelLoader(resolver=resolver)
+        loader = ModelLoader()
 
         key = Key(type="author", value="jane_doe")
         spec = Spec(
@@ -65,7 +69,7 @@ class TestModelLoader:
             },
         )
 
-        objects = loader.load([(key, spec)])
+        objects = loader.load([(key, spec)], resolver)
 
         assert len(objects) == 1
         author = objects[0]
@@ -80,7 +84,7 @@ class TestModelLoader:
         def resolver(ref):
             raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
-        loader = ModelLoader(resolver=resolver)
+        loader = ModelLoader()
 
         # Create author spec
         author_key = Key(type="author", value="john_smith")
@@ -103,7 +107,9 @@ class TestModelLoader:
             },
         )
 
-        objects = loader.load([(author_key, author_spec), (article_key, article_spec)])
+        objects = loader.load(
+            [(author_key, author_spec), (article_key, article_spec)], resolver
+        )
 
         assert len(objects) == 2
 
@@ -121,7 +127,7 @@ class TestModelLoader:
         def resolver(ref):
             raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
-        loader = ModelLoader(resolver=resolver)
+        loader = ModelLoader()
 
         # Create tag specs
         tag1_key = Key(type="tag", value="python")
@@ -173,7 +179,8 @@ class TestModelLoader:
                 (tag2_key, tag2_spec),
                 (author_key, author_spec),
                 (article_key, article_spec),
-            ]
+            ],
+            resolver,
         )
 
         assert len(objects) == 4
@@ -198,7 +205,7 @@ class TestModelLoader:
         def resolver(ref):
             raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
-        loader = ModelLoader(resolver=resolver)
+        loader = ModelLoader()
 
         # Create mentor spec
         mentor_key = Key(type="author", value="carol_mentor")
@@ -225,7 +232,9 @@ class TestModelLoader:
             },
         )
 
-        objects = loader.load([(mentor_key, mentor_spec), (author_key, author_spec)])
+        objects = loader.load(
+            [(mentor_key, mentor_spec), (author_key, author_spec)], resolver
+        )
 
         assert len(objects) == 2
 
@@ -258,7 +267,7 @@ class TestModelLoader:
                 return existing_author.pk
             raise AssertionError(f"Unexpected ref: {ref}")
 
-        loader = ModelLoader(resolver=resolver)
+        loader = ModelLoader()
 
         # Create article that references the existing author
         article_key = Key(type="article", value="external_ref_article")
@@ -271,7 +280,7 @@ class TestModelLoader:
             },
         )
 
-        objects = loader.load([(article_key, article_spec)])
+        objects = loader.load([(article_key, article_spec)], resolver)
 
         assert len(objects) == 1
         article = objects[0]
@@ -286,7 +295,7 @@ class TestModelLoader:
         def resolver(ref):
             raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
-        loader = ModelLoader(resolver=resolver)
+        loader = ModelLoader()
 
         # Create author and article that reference each other
         author_key = Key(type="author", value="circular_author")
@@ -314,7 +323,9 @@ class TestModelLoader:
             },
         )
 
-        objects = loader.load([(author_key, author_spec), (article_key, article_spec)])
+        objects = loader.load(
+            [(author_key, author_spec), (article_key, article_spec)], resolver
+        )
 
         assert len(objects) == 2
         author = next(obj for obj in objects if isinstance(obj, Author))
@@ -332,7 +343,7 @@ class TestModelLoader:
         def resolver(ref):
             raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
-        loader = ModelLoader(resolver=resolver)
+        loader = ModelLoader()
 
         # Create two authors where one references the other as mentor
         mentor_key = Key(type="author", value="mentor_author")
@@ -357,7 +368,9 @@ class TestModelLoader:
             },
         )
 
-        objects = loader.load([(mentor_key, mentor_spec), (student_key, student_spec)])
+        objects = loader.load(
+            [(mentor_key, mentor_spec), (student_key, student_spec)], resolver
+        )
 
         assert len(objects) == 2
         mentor = next(
@@ -382,7 +395,7 @@ class TestModelLoader:
                 return existing_tag.pk
             raise AssertionError(f"Unexpected ref: {ref}")
 
-        loader = ModelLoader(resolver=resolver)
+        loader = ModelLoader()
 
         # Create new tag and author
         new_tag_key = Key(type="tag", value="new_tag")
@@ -425,7 +438,8 @@ class TestModelLoader:
                 (new_tag_key, new_tag_spec),
                 (author_key, author_spec),
                 (article_key, article_spec),
-            ]
+            ],
+            resolver,
         )
 
         assert len(objects) == 3
@@ -444,7 +458,7 @@ class TestModelLoader:
         def resolver(ref):
             raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
-        loader = ModelLoader(resolver=resolver)
+        loader = ModelLoader()
 
         author_key = Key(type="author", value="empty_author")
         article_key = Key(type="article", value="empty_article")
@@ -469,7 +483,9 @@ class TestModelLoader:
             },
         )
 
-        objects = loader.load([(author_key, author_spec), (article_key, article_spec)])
+        objects = loader.load(
+            [(author_key, author_spec), (article_key, article_spec)], resolver
+        )
 
         assert len(objects) == 2
         author = next(obj for obj in objects if isinstance(obj, Author))
@@ -486,7 +502,7 @@ class TestModelLoader:
         def resolver(ref):
             raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
-        loader = ModelLoader(resolver=resolver)
+        loader = ModelLoader()
 
         # Create author and profile with OneToOne relationship
         author_key = Key(type="author", value="profile_author")
@@ -510,7 +526,9 @@ class TestModelLoader:
             },
         )
 
-        objects = loader.load([(author_key, author_spec), (profile_key, profile_spec)])
+        objects = loader.load(
+            [(author_key, author_spec), (profile_key, profile_spec)], resolver
+        )
 
         assert len(objects) == 2
         author = next(obj for obj in objects if isinstance(obj, Author))
@@ -536,7 +554,7 @@ class TestModelLoader:
                 return existing_author.pk
             raise AssertionError(f"Unexpected ref: {ref}")
 
-        loader = ModelLoader(resolver=resolver)
+        loader = ModelLoader()
 
         profile_key = Key(type="profile", value="external_oto_profile")
         profile_spec = Spec(
@@ -548,7 +566,7 @@ class TestModelLoader:
             },
         )
 
-        objects = loader.load([(profile_key, profile_spec)])
+        objects = loader.load([(profile_key, profile_spec)], resolver)
 
         assert len(objects) == 1
         profile = objects[0]
@@ -563,7 +581,7 @@ class TestModelLoader:
         def resolver(ref):
             raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
-        loader = ModelLoader(resolver=resolver)
+        loader = ModelLoader()
 
         # Create two authors
         author1_key = Key(type="author", value="json_author1")
@@ -603,7 +621,8 @@ class TestModelLoader:
                 (author1_key, author1_spec),
                 (author2_key, author2_spec),
                 (profile_key, profile_spec),
-            ]
+            ],
+            resolver,
         )
 
         assert len(objects) == 3
@@ -628,7 +647,37 @@ class TestModelLoader:
         def resolver(ref):
             raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
-        loader = ModelLoader(resolver=resolver)
-        objects = loader.load([])
+        loader = ModelLoader()
+        objects = loader.load([], resolver)
 
         assert objects == []
+
+
+@pytest.mark.django_db
+class TestLoad:
+    def test_load_simple_object(self):
+        content_type = ContentType.objects.get(app_label="testapp", model="author")
+
+        ConcreteResource.objects.create(
+            key="author:jane_doe",
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=content_type,
+            target_spec={
+                "name": "Jane Doe",
+                "email": "jane@example.com",
+                "bio": {"expertise": "Django", "years_experience": 5},
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        now = timezone.now()
+        with freeze_time(now):
+            load()
+
+        author = Author.objects.get()
+        assert author.name == "Jane Doe"
+        assert author.email == "jane@example.com"
+        assert author.bio == {"expertise": "Django", "years_experience": 5}

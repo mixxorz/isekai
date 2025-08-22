@@ -4,6 +4,7 @@ from django.db import models
 
 from isekai.contrib.wagtail import ImageTransformer
 from isekai.extractors import BaseExtractor, HTTPExtractor
+from isekai.loaders import ModelLoader
 from isekai.miners import HTMLImageMiner
 from isekai.models import AbstractResource
 from isekai.seeders import CSVSeeder, SitemapSeeder
@@ -102,6 +103,9 @@ class ConcreteResource(AbstractResource):
     transformers = [
         ImageTransformer(),
         FooBarTransformer(),
+    ]
+    loaders = [
+        ModelLoader(),
     ]
 
     class Meta:

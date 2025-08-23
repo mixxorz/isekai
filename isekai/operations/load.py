@@ -1,3 +1,4 @@
+import logging
 from typing import overload
 
 from django.db import transaction
@@ -8,12 +9,18 @@ from isekai.types import BlobRef, FileRef, Key, Ref, Spec
 from isekai.utils import get_resource_model
 
 Resource = get_resource_model()
+logger = logging.getLogger(__name__)
 
 
-def load():
+def load(verbose: bool = False) -> None:
     """Loads objects from resources"""
+    if verbose:
+        logger.setLevel(logging.INFO)
 
     loaders = Resource.loaders
+
+    if verbose:
+        logger.info(f"Using {len(loaders)} loaders")
 
     resources = Resource.objects.filter(
         status=Resource.Status.TRANSFORMED,
@@ -23,6 +30,9 @@ def load():
             queryset=Resource.objects.only("key"),
         )
     )
+
+    if verbose:
+        logger.info(f"Found {resources.count()} transformed resources to process")
 
     # Calculate build order
     key_to_resource = {resource.key: resource for resource in resources}
@@ -39,6 +49,9 @@ def load():
     ]
 
     graph = resolve_build_order(nodes, edges)
+
+    if verbose:
+        logger.info(f"Build order resolved into {len(graph)} phases")
 
     # Load the objects
     key_to_obj = {}
@@ -71,6 +84,15 @@ def load():
         # to resolve circular dependencies.
         # Single resources are also loaded, but they don't need the same
         # circular dependency handling.
+        if len(node) == 1:
+            if verbose:
+                logger.info(f"Loading resource: {list(node)[0]}")
+        else:
+            if verbose:
+                logger.info(
+                    f"Loading {len(node)} resources with circular dependencies: {list(node)}"
+                )
+
         specs = []
         for resource_key in node:
             resource = key_to_resource[resource_key]
@@ -89,26 +111,49 @@ def load():
             specs.append((key, spec))
 
         # Load the objects
-        with transaction.atomic():
-            resources_to_update = []
-            created_objects = []
-            for loader in loaders:
-                if created_objects := loader.load(specs, resolver):
-                    break
+        try:
+            with transaction.atomic():
+                resources_to_update = []
+                created_objects = []
+                for loader in loaders:
+                    if created_objects := loader.load(specs, resolver):
+                        break
 
-            for ckey, cobject in created_objects:
-                key_to_obj[str(ckey)] = cobject
-                resource = key_to_resource[str(ckey)]
-                resource.target_object_id = cobject.pk
-                resource.transition_to(Resource.Status.LOADED)
-                resources_to_update.append(resource)
+                for ckey, cobject in created_objects:
+                    key_to_obj[str(ckey)] = cobject
+                    resource = key_to_resource[str(ckey)]
+                    resource.target_object_id = cobject.pk
+                    resource.transition_to(Resource.Status.LOADED)
+                    resources_to_update.append(resource)
 
-            Resource.objects.bulk_update(
-                resources_to_update,
-                [
-                    "target_object_id",
-                    "status",
-                    "loaded_at",
-                    "last_error",
-                ],
-            )
+                    if verbose:
+                        logger.info(f"Successfully loaded: {resource.key}")
+
+                Resource.objects.bulk_update(
+                    resources_to_update,
+                    [
+                        "target_object_id",
+                        "status",
+                        "loaded_at",
+                        "last_error",
+                    ],
+                )
+        except Exception as e:
+            # Mark resources in this node as failed
+            for resource_key in node:
+                resource = key_to_resource[resource_key]
+                resource.refresh_from_db()
+                resource.last_error = f"{e.__class__.__name__}: {str(e)}"
+                resource.save()
+
+                if verbose:
+                    logger.error(f"Failed to load {resource.key}: {e}")
+
+    all_resources = list(key_to_resource.values())
+
+    if verbose:
+        loaded_count = sum(
+            1 for r in all_resources if r.status == Resource.Status.LOADED
+        )
+        error_count = sum(1 for r in all_resources if r.last_error)
+        logger.info(f"Load completed: {loaded_count} successful, {error_count} errors")

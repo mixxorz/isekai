@@ -958,3 +958,199 @@ class TestLoad:
         assert article_resource.target_object == article
         assert article_resource.status == ConcreteResource.Status.LOADED
         assert article_resource.loaded_at == now
+
+    def test_load_comprehensive_dependency_scenarios(self):
+        """Test load function robustness with mixed dependency scenarios."""
+
+        # Define all keys
+        independent_author_key = Key(type="author", value="independent_author")
+        independent_tag_key = Key(type="tag", value="independent_tag")
+
+        circular_author_key = Key(type="author", value="circular_author")
+        circular_article_key = Key(type="article", value="circular_article")
+
+        chain_author_key = Key(type="author", value="chain_author")
+        chain_article_key = Key(type="article", value="chain_article")
+        chain_profile_key = Key(type="profile", value="chain_profile")
+
+        # 1. Independent resources (no dependencies)
+        independent_author = ConcreteResource.objects.create(
+            key=str(independent_author_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="author"
+            ),
+            target_spec={
+                "name": "Independent Author",
+                "email": "independent@example.com",
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        independent_tag = ConcreteResource.objects.create(
+            key=str(independent_tag_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="tag"
+            ),
+            target_spec={
+                "name": "Independent Tag",
+                "color": "#ffffff",
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        # 2. Circular dependencies
+        circular_author = ConcreteResource.objects.create(
+            key=str(circular_author_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="author"
+            ),
+            target_spec={
+                "name": "Circular Author",
+                "email": "circular@example.com",
+                "bio": {"featured_article": str(Ref(circular_article_key))},
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        circular_article = ConcreteResource.objects.create(
+            key=str(circular_article_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="article"
+            ),
+            target_spec={
+                "title": "Circular Article",
+                "content": "This article has circular dependencies.",
+                "author": str(Ref(circular_author_key)),
+                "tags": [
+                    str(Ref(independent_tag_key))
+                ],  # Reference independent resource
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        circular_author.dependencies.add(circular_article)
+        circular_article.dependencies.add(circular_author, independent_tag)
+
+        # 3. Chain dependencies (A -> B -> C)
+        chain_author = ConcreteResource.objects.create(
+            key=str(chain_author_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="author"
+            ),
+            target_spec={
+                "name": "Chain Author",
+                "email": "chain@example.com",
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        chain_article = ConcreteResource.objects.create(
+            key=str(chain_article_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="article"
+            ),
+            target_spec={
+                "title": "Chain Article",
+                "content": "This article is part of a dependency chain.",
+                "author": str(Ref(chain_author_key)),
+                "tags": [
+                    str(Ref(independent_tag_key))
+                ],  # Cross-reference to independent
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        chain_profile = ConcreteResource.objects.create(
+            key=str(chain_profile_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="authorprofile"
+            ),
+            target_spec={
+                "author": str(Ref(chain_author_key)),
+                "website": "https://chain.example.com",
+                "settings": {
+                    "featured_article": str(Ref(chain_article_key)),
+                    "collaborator": str(Ref(independent_author_key)),
+                },
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        # Set up dependency chains
+        chain_article.dependencies.add(chain_author, independent_tag)
+        chain_profile.dependencies.add(chain_author, chain_article, independent_author)
+
+        now = timezone.now()
+        with freeze_time(now):
+            load()
+
+        # Verify all objects were created correctly
+        authors = Author.objects.all().order_by("name")
+        articles = Article.objects.all().order_by("title")
+        tags = Tag.objects.all()
+        profiles = AuthorProfile.objects.all()
+
+        assert len(authors) == 3
+        assert len(articles) == 2
+        assert len(tags) == 1
+        assert len(profiles) == 1
+
+        # Verify independent resources
+        independent_author_obj = authors.get(name="Independent Author")
+        independent_tag_obj = tags.get(name="Independent Tag")
+
+        # Verify circular dependencies are resolved
+        circular_author_obj = authors.get(name="Circular Author")
+        circular_article_obj = articles.get(title="Circular Article")
+
+        assert circular_article_obj.author == circular_author_obj
+        assert circular_author_obj.bio is not None
+        assert circular_author_obj.bio["featured_article"] == circular_article_obj.pk
+        assert list(circular_article_obj.tags.all()) == [independent_tag_obj]
+
+        # Verify chain dependencies
+        chain_author_obj = authors.get(name="Chain Author")
+        chain_article_obj = articles.get(title="Chain Article")
+        chain_profile_obj = profiles.get()
+
+        assert chain_article_obj.author == chain_author_obj
+        assert chain_profile_obj.author == chain_author_obj
+        assert list(chain_article_obj.tags.all()) == [independent_tag_obj]
+        assert chain_profile_obj.settings is not None
+        assert chain_profile_obj.settings["featured_article"] == chain_article_obj.pk
+        assert chain_profile_obj.settings["collaborator"] == independent_author_obj.pk
+
+        # Verify all resources are marked as loaded
+        for resource in ConcreteResource.objects.all():
+            resource.refresh_from_db()
+            assert resource.status == ConcreteResource.Status.LOADED
+            assert resource.loaded_at == now
+            assert resource.target_object_id is not None

@@ -122,6 +122,18 @@ class AbstractResource(models.Model):
             self.last_error = ""
             self.status = next_status
             self.transformed_at = timezone.now()
+        # TRANSFORMED -> LOADED
+        elif (
+            self.status == self.Status.TRANSFORMED and next_status == self.Status.LOADED
+        ):
+            if not self.target_object_id:
+                raise TransitionError(
+                    "Cannot transition to LOADED without target object"
+                )
+
+            self.last_error = ""
+            self.status = next_status
+            self.loaded_at = timezone.now()
         else:
             raise TransitionError(
                 f"Cannot transition from {self.status} to {next_status}"

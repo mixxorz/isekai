@@ -4,7 +4,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
 
 from isekai.types import BlobResource, TextResource, TransitionError
-from tests.testapp.models import ConcreteResource
+from tests.testapp.models import Author, ConcreteResource
 
 
 @pytest.mark.django_db
@@ -220,6 +220,49 @@ class TestMinedToTransformedTransition:
 
         assert resource.status == ConcreteResource.Status.MINED
         assert resource.transformed_at is None
+
+
+@pytest.mark.django_db
+class TestTransformedToExtractedTransition:
+    def test_transition_from_transformed(self):
+        author = Author.objects.create(
+            name="Test Author",
+            email="test@author.com",
+        )
+
+        author_ct = ContentType.objects.get_for_model(Author)
+        resource = ConcreteResource.objects.create(
+            key="test-key",
+            status=ConcreteResource.Status.TRANSFORMED,
+            text_data="some text",
+            data_type="text",
+            target_content_type=author_ct,
+            target_object_id=author.pk,
+        )
+
+        resource.transition_to(ConcreteResource.Status.LOADED)
+        resource.save()
+
+        assert resource.status == ConcreteResource.Status.LOADED
+        assert resource.loaded_at is not None
+
+        assert resource.target_object == author
+
+    def test_transition_without_target_object_fails(self):
+        article_ct = ContentType.objects.get_by_natural_key("testapp", "article")
+        resource = ConcreteResource.objects.create(
+            key="test-key",
+            status=ConcreteResource.Status.TRANSFORMED,
+            text_data="some text",
+            data_type="text",
+            target_content_type=article_ct,
+        )
+
+        with pytest.raises(
+            TransitionError,
+            match="Cannot transition to LOADED without target object",
+        ):
+            resource.transition_to(ConcreteResource.Status.LOADED)
 
 
 @pytest.mark.django_db

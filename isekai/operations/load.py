@@ -1,5 +1,6 @@
 from typing import overload
 
+from django.db import transaction
 from django.db.models import Prefetch
 
 from isekai.graphs import resolve_build_order
@@ -48,9 +49,9 @@ def load():
         for resource_key in node:
             resource = key_to_resource[resource_key]
             ct = resource.target_content_type
-            assert ct
+            assert ct, "Resource must have a target content type to be loaded"
             model_class = ct.model_class()
-            assert model_class
+            assert model_class, "Unable to resolve model class for content type"
 
             key = Key.from_string(resource.key)
             spec = Spec.from_dict(
@@ -61,10 +62,27 @@ def load():
             )
             specs.append((key, spec))
 
-        created_objects = []
-        for loader in loaders:
-            if created_objects := loader.load(specs, resolver):
-                break
+        # Load the objects
+        with transaction.atomic():
+            resources_to_update = []
+            created_objects = []
+            for loader in loaders:
+                if created_objects := loader.load(specs, resolver):
+                    break
 
-        for ckey, cobject in created_objects:
-            key_to_obj[str(ckey)] = cobject
+            for ckey, cobject in created_objects:
+                key_to_obj[str(ckey)] = cobject
+                resource = key_to_resource[str(ckey)]
+                resource.target_object_id = cobject.pk
+                resource.transition_to(Resource.Status.LOADED)
+                resources_to_update.append(resource)
+
+            Resource.objects.bulk_update(
+                resources_to_update,
+                [
+                    "target_object_id",
+                    "status",
+                    "loaded_at",
+                    "last_error",
+                ],
+            )

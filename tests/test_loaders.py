@@ -824,6 +824,17 @@ class TestLoad:
         assert article.content == "This is a test article."
         assert article.author == author
 
+        # Check resources are marked as loaded
+        author_resource.refresh_from_db()
+        assert author_resource.target_object == author
+        assert author_resource.status == ConcreteResource.Status.LOADED
+        assert author_resource.loaded_at == now
+
+        article_resource.refresh_from_db()
+        assert article_resource.target_object == article
+        assert article_resource.status == ConcreteResource.Status.LOADED
+        assert article_resource.loaded_at == now
+
     def test_load_object_with_circular_dependencies(self):
         author_key = Key(type="author", value="jane_doe")
         article_key = Key(type="article", value="test_article")

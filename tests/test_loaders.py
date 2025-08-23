@@ -1154,3 +1154,144 @@ class TestLoad:
             assert resource.status == ConcreteResource.Status.LOADED
             assert resource.loaded_at == now
             assert resource.target_object_id is not None
+
+    def test_load_with_missing_external_reference(self):
+        """Test load function behavior when external reference cannot be resolved."""
+        article_key = Key(type="article", value="missing_ref_article")
+
+        # Create resource with reference to non-existent author
+        ConcreteResource.objects.create(
+            key=str(article_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="article"
+            ),
+            target_spec={
+                "title": "Article with Missing Author",
+                "content": "This article references a non-existent author.",
+                "author": str(Ref(Key(type="author", value="nonexistent_author"))),
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        now = timezone.now()
+        with freeze_time(now):
+            load()
+
+        # Resource should have failed to load and have error recorded
+        resource = ConcreteResource.objects.get()
+        resource.refresh_from_db()
+        assert (
+            resource.status == ConcreteResource.Status.TRANSFORMED
+        )  # Status unchanged
+        assert resource.last_error is not None
+        assert "Unable to resolve reference: " in resource.last_error
+        assert resource.target_object_id is None
+
+        # No Article objects should have been created
+        assert Article.objects.count() == 0
+
+    def test_load_with_invalid_spec_attributes(self):
+        """Test load function behavior when spec has invalid attributes."""
+        author_key = Key(type="author", value="invalid_spec_author")
+
+        ConcreteResource.objects.create(
+            key=str(author_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="author"
+            ),
+            target_spec={
+                "name": "Invalid Author",
+                "email": "invalid@example.com",
+                "nonexistent_field": "this should cause an error",  # Invalid field
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        now = timezone.now()
+        with freeze_time(now):
+            load()
+
+        # Resource should have failed to load
+        resource = ConcreteResource.objects.get()
+        resource.refresh_from_db()
+        assert resource.status == ConcreteResource.Status.TRANSFORMED
+        assert resource.last_error is not None
+        assert resource.target_object_id is None
+
+        # No Author objects should have been created
+        assert Author.objects.count() == 0
+
+    def test_load_stops_on_dependency_failure(self):
+        """Test that load operation stops when a dependency fails, preventing cascade failures."""
+        author_key = Key(type="author", value="failing_author")
+        article_key = Key(type="article", value="dependent_article")
+
+        # Create author resource with invalid spec that will fail
+        author_resource = ConcreteResource.objects.create(
+            key=str(author_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="author"
+            ),
+            target_spec={
+                "name": "Failing Author",
+                "email": "failing@example.com",
+                "nonexistent_field": "this will cause failure",  # This will cause the node to fail
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        # Create article resource that depends on the failing author
+        article_resource = ConcreteResource.objects.create(
+            key=str(article_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="article"
+            ),
+            target_spec={
+                "title": "Dependent Article",
+                "content": "This article depends on the failing author.",
+                "author": str(Ref(author_key)),
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        # Set up dependency
+        article_resource.dependencies.add(author_resource)
+
+        now = timezone.now()
+        with freeze_time(now):
+            load()
+
+        # Both resources should remain unchanged
+        author_resource.refresh_from_db()
+        article_resource.refresh_from_db()
+
+        # Author should have failed with error recorded
+        assert author_resource.status == ConcreteResource.Status.TRANSFORMED
+        assert author_resource.last_error is not None
+        assert author_resource.target_object_id is None
+
+        # Article should remain unprocessed (no error recorded, still TRANSFORMED)
+        # because processing stopped after author failed
+        assert article_resource.status == ConcreteResource.Status.TRANSFORMED
+        assert not article_resource.last_error  # No error because it wasn't processed
+        assert article_resource.target_object_id is None
+
+        # No database objects should have been created
+        assert Author.objects.count() == 0
+        assert Article.objects.count() == 0

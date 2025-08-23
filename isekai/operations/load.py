@@ -68,8 +68,9 @@ def load(verbose: bool = False) -> None:
 
         # If it's not there, then it's a reference to a resource that has
         # already been loaded
-        if obj_id := Resource.objects.get(key=str(ref.key)).target_object_id:
-            return obj_id
+        if obj := Resource.objects.filter(key=str(ref.key)).first():
+            if obj and obj.target_object_id:
+                return obj.target_object_id
 
         # If the framework is working correctly, it is logically impossible to
         # reach this case. The build order resolver ensures that all dependency
@@ -140,14 +141,28 @@ def load(verbose: bool = False) -> None:
                 )
         except Exception as e:
             # Mark resources in this node as failed
+            failed_resources = []
             for resource_key in node:
                 resource = key_to_resource[resource_key]
                 resource.refresh_from_db()
                 resource.last_error = f"{e.__class__.__name__}: {str(e)}"
-                resource.save()
+                failed_resources.append(resource)
 
                 if verbose:
                     logger.error(f"Failed to load {resource.key}: {e}")
+
+            # Save the failed resources
+            Resource.objects.bulk_update(
+                failed_resources,
+                ["last_error"],
+            )
+
+            # Stop processing - dependent nodes will also fail
+            if verbose:
+                logger.error(
+                    "Stopping load process due to node failure - remaining nodes would likely fail due to missing dependencies"
+                )
+            break
 
     all_resources = list(key_to_resource.values())
 

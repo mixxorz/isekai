@@ -2,7 +2,7 @@ import logging
 
 from django.core.files.base import ContentFile
 
-from isekai.types import BlobResource, Key, PathFileRef, TextResource
+from isekai.types import BlobResource, Key, PathFileProxy, TextResource
 from isekai.utils import get_resource_model
 
 Resource = get_resource_model()
@@ -65,7 +65,7 @@ def extract(verbose: bool = False) -> None:
                         )
 
                     # Clean up the temporary file
-                    assert isinstance(extracted_resource.file_ref, PathFileRef)
+                    assert isinstance(extracted_resource.file_ref, PathFileProxy)
                     extracted_resource.file_ref.path.unlink(missing_ok=True)
 
                     if verbose:

@@ -54,15 +54,14 @@ class TextResource:
     metadata: Mapping[str, Any]
 
 
-# TODO: Rename this to proxies
-class FileRef(Protocol):
+class FileProxy(Protocol):
     @property
     def name(self) -> str: ...
     def open(self) -> IO[bytes]: ...
 
 
 @dataclass(frozen=True)
-class PathFileRef:
+class PathFileProxy:
     path: Path
 
     @property
@@ -74,7 +73,7 @@ class PathFileRef:
 
 
 @dataclass(frozen=True)
-class FieldFileRef:
+class FieldFileProxy:
     ff: "FieldFile"
 
     @property
@@ -86,7 +85,7 @@ class FieldFileRef:
 
 
 @dataclass(frozen=True)
-class InMemoryFileRef:
+class InMemoryFileProxy:
     content: bytes
 
     @property
@@ -101,7 +100,7 @@ class InMemoryFileRef:
 class BlobResource:
     mime_type: str
     filename: str
-    file_ref: FileRef
+    file_ref: FileProxy
     metadata: Mapping[str, Any]
 
 
@@ -206,11 +205,11 @@ class BlobRef(Ref):
 class Resolver(Protocol):
     """
     A resolver function that takes a Ref and returns the database PK for that
-    resource, or a FileRef if the ref is a BlobRef.
+    resource, or a FileProxy if the ref is a BlobRef.
     """
 
     @overload
-    def __call__(self, ref: BlobRef) -> FileRef: ...
+    def __call__(self, ref: BlobRef) -> FileProxy: ...
     @overload
     def __call__(self, ref: Ref) -> int | str: ...
 

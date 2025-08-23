@@ -5,7 +5,7 @@ from django.db import transaction
 from django.db.models import Prefetch
 
 from isekai.graphs import resolve_build_order
-from isekai.types import BlobRef, FileRef, Key, Ref, Spec
+from isekai.types import BlobRef, FileProxy, Key, Ref, Spec
 from isekai.utils import get_resource_model
 
 Resource = get_resource_model()
@@ -57,11 +57,11 @@ def load(verbose: bool = False) -> None:
     key_to_obj = {}
 
     @overload
-    def resolver(ref: BlobRef) -> FileRef: ...
+    def resolver(ref: BlobRef) -> FileProxy: ...
     @overload
     def resolver(ref: Ref) -> int | str: ...
 
-    def resolver(ref: Ref) -> FileRef | int | str:
+    def resolver(ref: Ref) -> FileProxy | int | str:
         # Try to find the object in the pool of resources currently being loaded
         if str(ref.key) in key_to_obj:
             return key_to_obj[str(ref.key)].pk

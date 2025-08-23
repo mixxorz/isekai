@@ -1,6 +1,6 @@
 import logging
 
-from isekai.types import BlobResource, Key, MinedResource, PathFileRef
+from isekai.types import BlobResource, Key, MinedResource, PathFileProxy
 from isekai.utils import get_resource_model
 
 Resource = get_resource_model()
@@ -65,7 +65,7 @@ def mine(verbose: bool = False) -> None:
 
             # Clean up temporary file if it was a blob resource
             if isinstance(resource_obj, BlobResource) and isinstance(
-                resource_obj.file_ref, PathFileRef
+                resource_obj.file_ref, PathFileProxy
             ):
                 resource_obj.file_ref.path.unlink(missing_ok=True)
 

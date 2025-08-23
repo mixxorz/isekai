@@ -8,7 +8,7 @@ from wagtail.images.models import Image
 
 from isekai.loaders import ModelLoader
 from isekai.operations.load import load
-from isekai.types import BlobRef, FileRef, InMemoryFileRef, Key, Ref, Spec
+from isekai.types import BlobRef, FileProxy, InMemoryFileProxy, Key, Ref, Spec
 from tests.testapp.models import Article, Author, AuthorProfile, ConcreteResource, Tag
 
 
@@ -16,13 +16,13 @@ from tests.testapp.models import Article, Author, AuthorProfile, ConcreteResourc
 class TestModelLoader:
     def test_load_spec_with_blob(self):
         @overload
-        def resolver(ref: BlobRef) -> FileRef: ...
+        def resolver(ref: BlobRef) -> FileProxy: ...
         @overload
         def resolver(ref: Ref) -> int | str: ...
 
-        def resolver(ref: Ref) -> FileRef | int | str:
+        def resolver(ref: Ref) -> FileProxy | int | str:
             with open("tests/files/blue_square.jpg", "rb") as f:
-                return InMemoryFileRef(f.read())
+                return InMemoryFileProxy(f.read())
             raise AssertionError(f"Unexpected ref: {ref}")
 
         loader = ModelLoader()

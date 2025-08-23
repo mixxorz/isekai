@@ -1,5 +1,5 @@
 from isekai.contrib.wagtail import ImageTransformer
-from isekai.types import BlobRef, BlobResource, InMemoryFileRef, Key
+from isekai.types import BlobRef, BlobResource, InMemoryFileProxy, Key
 
 
 class TestWagtailImageTransformer:
@@ -19,7 +19,7 @@ class TestWagtailImageTransformer:
         resource = BlobResource(
             mime_type="image/png",
             filename="image.png",
-            file_ref=InMemoryFileRef(content=png_data),
+            file_ref=InMemoryFileProxy(content=png_data),
             metadata={"alt_text": "A red pixel"},
         )
 
@@ -41,7 +41,7 @@ class TestWagtailImageTransformer:
         resource = BlobResource(
             mime_type="text/plain",
             filename="image.txt",
-            file_ref=InMemoryFileRef(content=b"Not an image"),
+            file_ref=InMemoryFileProxy(content=b"Not an image"),
             metadata={},
         )
 

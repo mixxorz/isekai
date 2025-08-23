@@ -10,7 +10,7 @@ from isekai.loaders import BaseLoader
 from isekai.miners import BaseMiner
 from isekai.seeders import BaseSeeder
 from isekai.transformers import BaseTransformer
-from isekai.types import BlobResource, FieldFileRef, TextResource, TransitionError
+from isekai.types import BlobResource, FieldFileProxy, TextResource, TransitionError
 
 
 class AbstractResource(models.Model):
@@ -149,7 +149,7 @@ class AbstractResource(models.Model):
                 metadata=self.metadata or {},
             )
         else:
-            file_ref = FieldFileRef(ff=self.blob_data)
+            file_ref = FieldFileProxy(ff=self.blob_data)
             resource_obj = BlobResource(
                 mime_type=self.mime_type,
                 filename=file_ref.name,

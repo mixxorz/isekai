@@ -46,7 +46,7 @@ def mine(verbose: bool = False) -> None:
             mined_key_strings = [str(mr.key) for mr in mined_resources]
 
             # Create Resource objects for new keys
-            new_django_resources = [
+            new_resources = [
                 Resource(
                     key=str(mr.key), metadata=dict(mr.metadata) if mr.metadata else None
                 )
@@ -54,10 +54,10 @@ def mine(verbose: bool = False) -> None:
             ]
 
             # Create resources that don't already exist
-            Resource.objects.bulk_create(new_django_resources, ignore_conflicts=True)
+            Resource.objects.bulk_create(new_resources, ignore_conflicts=True)
 
             # Update the original resource that was mined
-            resource.dependencies.set(mined_key_strings)
+            resource.dependencies.set(mined_key_strings)  # type: ignore[call-arg]
             resource.transition_to(Resource.Status.MINED)
             resource.save()
 

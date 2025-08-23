@@ -815,3 +815,61 @@ class TestLoad:
         assert article.title == "Test Article"
         assert article.content == "This is a test article."
         assert article.author == author
+
+    def test_load_object_with_circular_dependencies(self):
+        author_key = Key(type="author", value="jane_doe")
+        article_key = Key(type="article", value="test_article")
+
+        author_resource = ConcreteResource.objects.create(
+            key=str(author_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="author"
+            ),
+            target_spec={
+                "name": "Jane Doe",
+                "email": "jane@example.com",
+                "bio": {"featured_articles": [str(Ref(article_key))]},
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+        article_resource = ConcreteResource.objects.create(
+            key=str(article_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="article"
+            ),
+            target_spec={
+                "title": "Test Article",
+                "content": "This is a test article.",
+                "author": str(Ref(Key.from_string(author_resource.key))),
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        author_resource.dependencies.add(article_resource)
+        article_resource.dependencies.add(author_resource)
+
+        now = timezone.now()
+        with freeze_time(now):
+            load()
+
+        author = Author.objects.get()
+        article = Article.objects.get()
+
+        assert author.name == "Jane Doe"
+        assert author.email == "jane@example.com"
+        assert author.bio == {"featured_articles": [article.pk]}
+
+        assert article.title == "Test Article"
+        assert article.content == "This is a test article."
+        assert article.author == author
+
+    def test_load_object_depends_on_existing_object(self):
+        raise AssertionError("This test is not implemented yet.")

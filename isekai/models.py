@@ -37,7 +37,7 @@ class AbstractResource(models.Model):
     metadata: dict[str, Any] = models.JSONField(blank=True, null=True)  # type: ignore[assignment]
 
     # Resources this resource depends on
-    dependencies = models.ManyToManyField(
+    dependencies = models.ManyToManyField["AbstractResource", Any](
         "self",
         symmetrical=False,
         related_name="dependent_resources",

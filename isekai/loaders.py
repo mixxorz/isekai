@@ -12,14 +12,14 @@ from isekai.types import BlobRef, Key, Ref, Resolver, Spec
 class BaseLoader:
     def load(
         self, specs: list[tuple[Key, Spec]], resolver: Resolver
-    ) -> list[models.Model]:
+    ) -> list[tuple[Key, models.Model]]:
         return []
 
 
 class ModelLoader(BaseLoader):
     def load(
         self, specs: list[tuple[Key, Spec]], resolver: Resolver
-    ) -> list[models.Model]:
+    ) -> list[tuple[Key, models.Model]]:
         """Creates Django objects from (Key, Spec) tuples with cross-references."""
         if not specs:
             return []
@@ -51,7 +51,7 @@ class ModelLoader(BaseLoader):
                     resolver,
                 )
                 key_to_object[key] = obj
-                created_objects.append(obj)
+                created_objects.append((key, obj))
 
             # Fix FK references
             for obj_key, field_name, ref_key in pending_fks:

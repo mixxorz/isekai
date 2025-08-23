@@ -1,5 +1,8 @@
 from typing import overload
 
+from django.db.models import Prefetch
+
+from isekai.graphs import resolve_build_order
 from isekai.types import BlobRef, FileRef, Key, Ref, Spec
 from isekai.utils import get_resource_model
 
@@ -11,8 +14,22 @@ def load():
 
     loaders = Resource.loaders
 
-    resources = Resource.objects.filter(status=Resource.Status.TRANSFORMED)
+    resources = Resource.objects.filter(
+        status=Resource.Status.TRANSFORMED
+    ).prefetch_related(Prefetch("dependencies", queryset=Resource.objects.only("key")))
 
+    # Calculate build order
+    key_to_resource = {resource.key: resource for resource in resources}
+    nodes = key_to_resource.keys()
+    edges = [
+        (resource.key, dep.key)
+        for resource in resources
+        for dep in resource.dependencies.all()
+    ]
+
+    graph = resolve_build_order(nodes, edges)
+
+    # Load the objects
     key_to_obj = {}
 
     @overload
@@ -23,25 +40,31 @@ def load():
     def resolver(ref: Ref) -> FileRef | int | str:
         if str(ref.key) in key_to_obj:
             return key_to_obj[str(ref.key)].pk
-        raise AssertionError(f"Unexpected ref: {ref}")
+        # If the framework is working correctly, we should never hit this case.
+        raise ValueError(f"Unable to resolve reference: {ref}")
 
-    for resource in resources:
-        ct = resource.target_content_type
-        assert ct
-        model_class = ct.model_class()
-        assert model_class
+    for node in graph:
+        specs = []
+        for resource_key in node:
+            resource = key_to_resource[resource_key]
+            ct = resource.target_content_type
+            assert ct
+            model_class = ct.model_class()
+            assert model_class
 
-        key = Key.from_string(resource.key)
-        spec = Spec.from_dict(
-            {
-                "content_type": f"{model_class._meta.label}",
-                "attributes": resource.target_spec,
-            }
-        )
+            key = Key.from_string(resource.key)
+            spec = Spec.from_dict(
+                {
+                    "content_type": f"{model_class._meta.label}",
+                    "attributes": resource.target_spec,
+                }
+            )
+            specs.append((key, spec))
 
-        obj = None
+        created_objects = []
         for loader in loaders:
-            if obj := loader.load([(key, spec)], resolver):
+            if created_objects := loader.load(specs, resolver):
                 break
 
-        key_to_obj[resource.key] = obj[0] if obj else None
+        for ckey, cobject in created_objects:
+            key_to_obj[str(ckey)] = cobject

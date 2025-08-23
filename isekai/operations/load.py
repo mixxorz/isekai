@@ -16,8 +16,13 @@ def load():
     loaders = Resource.loaders
 
     resources = Resource.objects.filter(
-        status=Resource.Status.TRANSFORMED
-    ).prefetch_related(Prefetch("dependencies", queryset=Resource.objects.only("key")))
+        status=Resource.Status.TRANSFORMED,
+    ).prefetch_related(
+        Prefetch(
+            "dependencies",
+            queryset=Resource.objects.only("key"),
+        )
+    )
 
     # Calculate build order
     key_to_resource = {resource.key: resource for resource in resources}
@@ -26,6 +31,11 @@ def load():
         (resource.key, dep.key)
         for resource in resources
         for dep in resource.dependencies.all()
+        # When calculating the build order, we only need to deal with resources
+        # that have not been loaded yet. Dependency resources that are already
+        # loaded do not need to be taken into consideration, because we can
+        # resolve to them immediately; no need for two-phase loading
+        if dep.key in nodes
     ]
 
     graph = resolve_build_order(nodes, edges)
@@ -39,12 +49,28 @@ def load():
     def resolver(ref: Ref) -> int | str: ...
 
     def resolver(ref: Ref) -> FileRef | int | str:
+        # Try to find the object in the pool of resources currently being loaded
         if str(ref.key) in key_to_obj:
             return key_to_obj[str(ref.key)].pk
-        # If the framework is working correctly, we should never hit this case.
+
+        # If it's not there, then it's a reference to a resource that has
+        # already been loaded
+        if obj_id := Resource.objects.get(key=str(ref.key)).target_object_id:
+            return obj_id
+
+        # If the framework is working correctly, it is logically impossible to
+        # reach this case. The build order resolver ensures that all dependency
+        # resources are created either before it's needed, or at the same time
+        # as the resource that references it.
         raise ValueError(f"Unable to resolve reference: {ref}")
 
     for node in graph:
+        # Each node in the graph is comprised of one OR MORE resources.
+        # If there is more than one resource, that means that those resources
+        # need to be loaded together using a two-phase loading process in order
+        # to resolve circular dependencies.
+        # Single resources are also loaded, but they don't need the same
+        # circular dependency handling.
         specs = []
         for resource_key in node:
             resource = key_to_resource[resource_key]

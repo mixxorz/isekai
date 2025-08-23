@@ -890,5 +890,71 @@ class TestLoad:
         assert article.content == "This is a test article."
         assert article.author == author
 
+        # Check resources are marked as loaded
+        author_resource.refresh_from_db()
+        assert author_resource.target_object == author
+        assert author_resource.status == ConcreteResource.Status.LOADED
+        assert author_resource.loaded_at == now
+
+        article_resource.refresh_from_db()
+        assert article_resource.target_object == article
+        assert article_resource.status == ConcreteResource.Status.LOADED
+        assert article_resource.loaded_at == now
+
     def test_load_object_depends_on_existing_object(self):
-        raise AssertionError("This test is not implemented yet.")
+        author_key = Key(type="author", value="jane_doe")
+        article_key = Key(type="article", value="test_article")
+
+        # Author is already loaded
+        author = Author.objects.create(
+            name="Jane Doe",
+            email="jane@example.com",
+        )
+        author_resource = ConcreteResource.objects.create(
+            key=str(author_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="author"
+            ),
+            target_object_id=author.pk,
+            target_spec={
+                "name": "Jane Doe",
+                "email": "jane@example.com",
+            },
+            status=ConcreteResource.Status.LOADED,
+        )
+
+        # Article depends on the existing author
+        article_resource = ConcreteResource.objects.create(
+            key=str(article_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="article"
+            ),
+            target_spec={
+                "title": "Test Article",
+                "content": "This is a test article.",
+                "author": str(Ref(Key.from_string(author_resource.key))),
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        article_resource.dependencies.add(author_resource)
+
+        now = timezone.now()
+        with freeze_time(now):
+            load()
+
+        article = Article.objects.get()
+
+        # Check resources are marked as loaded
+        article_resource.refresh_from_db()
+        assert article_resource.target_object == article
+        assert article_resource.status == ConcreteResource.Status.LOADED
+        assert article_resource.loaded_at == now

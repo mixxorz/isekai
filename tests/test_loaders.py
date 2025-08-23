@@ -39,7 +39,7 @@ class TestModelLoader:
 
         objects = loader.load([(key, spec)], resolver)
 
-        image = objects[0]
+        image = objects[0][1]
         assert isinstance(image, Image)
         assert image.title == "blue_square.jpg"
         assert image.description == "A sample image"
@@ -72,7 +72,7 @@ class TestModelLoader:
         objects = loader.load([(key, spec)], resolver)
 
         assert len(objects) == 1
-        author = objects[0]
+        author = objects[0][1]
         assert isinstance(author, Author)
         assert author.name == "Jane Doe"
         assert author.email == "jane@example.com"
@@ -114,8 +114,8 @@ class TestModelLoader:
         assert len(objects) == 2
 
         # Find author and article in results
-        author = next(obj for obj in objects if isinstance(obj, Author))
-        article = next(obj for obj in objects if isinstance(obj, Article))
+        author = next(obj[1] for obj in objects if isinstance(obj[1], Author))
+        article = next(obj[1] for obj in objects if isinstance(obj[1], Article))
 
         assert author.name == "John Smith"
         assert article.title == "Test Article"
@@ -186,9 +186,9 @@ class TestModelLoader:
         assert len(objects) == 4
 
         # Find objects in results
-        tags = [obj for obj in objects if isinstance(obj, Tag)]
-        author = next(obj for obj in objects if isinstance(obj, Author))
-        article = next(obj for obj in objects if isinstance(obj, Article))
+        tags = [obj[1] for obj in objects if isinstance(obj[1], Tag)]
+        author = next(obj[1] for obj in objects if isinstance(obj[1], Author))
+        article = next(obj[1] for obj in objects if isinstance(obj[1], Article))
 
         assert len(tags) == 2
         assert article.author == author
@@ -240,10 +240,10 @@ class TestModelLoader:
 
         # Find objects
         mentor = next(
-            obj for obj in objects if getattr(obj, "name", None) == "Carol Mentor"
+            obj[1] for obj in objects if getattr(obj[1], "name", None) == "Carol Mentor"
         )
         author = next(
-            obj for obj in objects if getattr(obj, "name", None) == "Bob Writer"
+            obj[1] for obj in objects if getattr(obj[1], "name", None) == "Bob Writer"
         )
 
         # Check JSON field reference resolution
@@ -283,7 +283,7 @@ class TestModelLoader:
         objects = loader.load([(article_key, article_spec)], resolver)
 
         assert len(objects) == 1
-        article = objects[0]
+        article = objects[0][1]
         assert isinstance(article, Article)
         assert article.title == "Article with External Author"
         assert article.author == existing_author
@@ -328,8 +328,8 @@ class TestModelLoader:
         )
 
         assert len(objects) == 2
-        author = next(obj for obj in objects if isinstance(obj, Author))
-        article = next(obj for obj in objects if isinstance(obj, Article))
+        author = next(obj[1] for obj in objects if isinstance(obj[1], Author))
+        article = next(obj[1] for obj in objects if isinstance(obj[1], Article))
 
         # Check circular references are resolved correctly
         assert article.author == author
@@ -374,10 +374,14 @@ class TestModelLoader:
 
         assert len(objects) == 2
         mentor = next(
-            obj for obj in objects if getattr(obj, "name", None) == "Mentor Author"
+            obj[1]
+            for obj in objects
+            if getattr(obj[1], "name", None) == "Mentor Author"
         )
         student = next(
-            obj for obj in objects if getattr(obj, "name", None) == "Student Author"
+            obj[1]
+            for obj in objects
+            if getattr(obj[1], "name", None) == "Student Author"
         )
 
         assert isinstance(student, Author)
@@ -443,7 +447,7 @@ class TestModelLoader:
         )
 
         assert len(objects) == 3
-        article = next(obj for obj in objects if isinstance(obj, Article))
+        article = next(obj[1] for obj in objects if isinstance(obj[1], Article))
 
         # Check M2M relationships include both internal and external refs
         article_tags = list(article.tags.all())
@@ -488,8 +492,8 @@ class TestModelLoader:
         )
 
         assert len(objects) == 2
-        author = next(obj for obj in objects if isinstance(obj, Author))
-        article = next(obj for obj in objects if isinstance(obj, Article))
+        author = next(obj[1] for obj in objects if isinstance(obj[1], Author))
+        article = next(obj[1] for obj in objects if isinstance(obj[1], Article))
 
         assert author.bio == {}
         assert article.author == author
@@ -531,8 +535,8 @@ class TestModelLoader:
         )
 
         assert len(objects) == 2
-        author = next(obj for obj in objects if isinstance(obj, Author))
-        profile = next(obj for obj in objects if isinstance(obj, AuthorProfile))
+        author = next(obj[1] for obj in objects if isinstance(obj[1], Author))
+        profile = next(obj[1] for obj in objects if isinstance(obj[1], AuthorProfile))
 
         # Check OneToOne relationship
         assert profile.author == author
@@ -569,7 +573,7 @@ class TestModelLoader:
         objects = loader.load([(profile_key, profile_spec)], resolver)
 
         assert len(objects) == 1
-        profile = objects[0]
+        profile = objects[0][1]
         assert isinstance(profile, AuthorProfile)
         assert profile.author == existing_author
         assert profile.website == "https://external.example.com"
@@ -627,12 +631,16 @@ class TestModelLoader:
 
         assert len(objects) == 3
         author1 = next(
-            obj for obj in objects if getattr(obj, "name", None) == "JSON Author 1"
+            obj[1]
+            for obj in objects
+            if getattr(obj[1], "name", None) == "JSON Author 1"
         )
         author2 = next(
-            obj for obj in objects if getattr(obj, "name", None) == "JSON Author 2"
+            obj[1]
+            for obj in objects
+            if getattr(obj[1], "name", None) == "JSON Author 2"
         )
-        profile = next(obj for obj in objects if isinstance(obj, AuthorProfile))
+        profile = next(obj[1] for obj in objects if isinstance(obj[1], AuthorProfile))
 
         # Check OneToOne and JSON reference resolution
         assert profile.author == author1
@@ -677,8 +685,8 @@ class TestModelLoader:
         assert len(objects) == 2
 
         # Find author and article in results
-        author = next(obj for obj in objects if isinstance(obj, Author))
-        article = next(obj for obj in objects if isinstance(obj, Article))
+        author = next(obj[1] for obj in objects if isinstance(obj[1], Author))
+        article = next(obj[1] for obj in objects if isinstance(obj[1], Article))
 
         assert author.name == "ID Field Author"
         assert article.title == "ID Field Article"
@@ -718,8 +726,8 @@ class TestModelLoader:
         )
 
         assert len(objects) == 2
-        author = next(obj for obj in objects if isinstance(obj, Author))
-        profile = next(obj for obj in objects if isinstance(obj, AuthorProfile))
+        author = next(obj[1] for obj in objects if isinstance(obj[1], Author))
+        profile = next(obj[1] for obj in objects if isinstance(obj[1], AuthorProfile))
 
         # Check OneToOne relationship
         assert profile.author == author

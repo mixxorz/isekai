@@ -116,11 +116,21 @@ class ModelLoader(BaseLoader):
         resolver,
     ):
         """Create a single object with processed fields."""
+        # Build comprehensive field mapping including _id fields for FKs
         model_fields = {
             f.name: f
             for f in model_class._meta.get_fields()
             if hasattr(f, "contribute_to_class")
         }
+
+        # Add _id mappings for FK/OneToOne fields
+        fk_fields = {
+            field_name: field
+            for field_name, field in model_fields.items()
+            if isinstance(field, models.ForeignKey | models.OneToOneField | ParentalKey)
+        }
+        for field_name, field in fk_fields.items():
+            model_fields[f"{field_name}_id"] = field
 
         obj_fields = {}
 
@@ -142,13 +152,18 @@ class ModelLoader(BaseLoader):
                 if field and isinstance(
                     field, models.ForeignKey | models.OneToOneField | ParentalKey
                 ):
+                    # Use the field name as-is if it's already _id, otherwise add _id
+                    fk_field_name = (
+                        field_name if field_name.endswith("_id") else f"{field_name}_id"
+                    )
+
                     if field_value.key in key_to_spec:
                         # Internal ref - use temp value, schedule for update
-                        obj_fields[f"{field_name}_id"] = key_to_temp_fk[field_value.key]
-                        pending_fks.append((key, f"{field_name}_id", field_value.key))
+                        obj_fields[fk_field_name] = key_to_temp_fk[field_value.key]
+                        pending_fks.append((key, fk_field_name, field_value.key))
                     else:
                         # External ref - resolve immediately
-                        obj_fields[f"{field_name}_id"] = resolver(field_value)
+                        obj_fields[fk_field_name] = resolver(field_value)
                 else:
                     # Ref in non-FK field (likely JSON) - skip for now
                     pass

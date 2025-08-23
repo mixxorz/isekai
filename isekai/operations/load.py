@@ -13,12 +13,16 @@ def load():
 
     resources = Resource.objects.filter(status=Resource.Status.TRANSFORMED)
 
+    key_to_obj = {}
+
     @overload
     def resolver(ref: BlobRef) -> FileRef: ...
     @overload
     def resolver(ref: Ref) -> int | str: ...
 
     def resolver(ref: Ref) -> FileRef | int | str:
+        if str(ref.key) in key_to_obj:
+            return key_to_obj[str(ref.key)].pk
         raise AssertionError(f"Unexpected ref: {ref}")
 
     for resource in resources:
@@ -40,4 +44,4 @@ def load():
             if obj := loader.load([(key, spec)], resolver):
                 break
 
-        print(obj)
+        key_to_obj[resource.key] = obj[0] if obj else None

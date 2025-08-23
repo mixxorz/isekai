@@ -641,6 +641,91 @@ class TestModelLoader:
         assert profile_settings["preferred_collaborator"] == author2.pk
         assert profile_settings["theme"] == "light"
 
+    def test_load_with_foreign_key_id_field(self):
+        """Test loading models with foreign key relationships using _id field."""
+
+        def resolver(ref):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
+
+        loader = ModelLoader()
+
+        # Create author spec
+        author_key = Key(type="author", value="id_field_author")
+        author_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "ID Field Author",
+                "email": "idfield@example.com",
+            },
+        )
+
+        # Create article spec that references the author using author_id
+        article_key = Key(type="article", value="id_field_article")
+        article_spec = Spec(
+            content_type="testapp.Article",
+            attributes={
+                "title": "ID Field Article",
+                "content": "This article uses author_id field.",
+                "author_id": Ref(author_key),  # Using _id suffix
+            },
+        )
+
+        objects = loader.load(
+            [(author_key, author_spec), (article_key, article_spec)], resolver
+        )
+
+        assert len(objects) == 2
+
+        # Find author and article in results
+        author = next(obj for obj in objects if isinstance(obj, Author))
+        article = next(obj for obj in objects if isinstance(obj, Article))
+
+        assert author.name == "ID Field Author"
+        assert article.title == "ID Field Article"
+        assert article.author == author
+
+    def test_load_with_onetoone_id_field(self):
+        """Test loading OneToOne relationships using _id field."""
+
+        def resolver(ref):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
+
+        loader = ModelLoader()
+
+        # Create author spec
+        author_key = Key(type="author", value="oto_id_author")
+        author_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "OTO ID Author",
+                "email": "otoid@example.com",
+            },
+        )
+
+        # Create profile spec that references the author using author_id
+        profile_key = Key(type="profile", value="oto_id_profile")
+        profile_spec = Spec(
+            content_type="testapp.AuthorProfile",
+            attributes={
+                "author_id": Ref(author_key),  # Using _id suffix for OneToOne
+                "website": "https://otoid.example.com",
+                "settings": {"test": True},
+            },
+        )
+
+        objects = loader.load(
+            [(author_key, author_spec), (profile_key, profile_spec)], resolver
+        )
+
+        assert len(objects) == 2
+        author = next(obj for obj in objects if isinstance(obj, Author))
+        profile = next(obj for obj in objects if isinstance(obj, AuthorProfile))
+
+        # Check OneToOne relationship
+        assert profile.author == author
+        assert author.authorprofile == profile  # Reverse relationship
+        assert profile.website == "https://otoid.example.com"
+
     def test_load_empty_specs(self):
         """Test that loading empty specs returns empty list."""
 
@@ -681,3 +766,52 @@ class TestLoad:
         assert author.name == "Jane Doe"
         assert author.email == "jane@example.com"
         assert author.bio == {"expertise": "Django", "years_experience": 5}
+
+    def test_load_object_with_dependencies(self):
+        author_resource = ConcreteResource.objects.create(
+            key="author:jane_doe",
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="author"
+            ),
+            target_spec={
+                "name": "Jane Doe",
+                "email": "jane@example.com",
+                "bio": {"expertise": "Django", "years_experience": 5},
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+        article_resource = ConcreteResource.objects.create(
+            key="article:test_article",
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="article"
+            ),
+            target_spec={
+                "title": "Test Article",
+                "content": "This is a test article.",
+                "author": str(Ref(Key.from_string(author_resource.key))),
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+        article_resource.dependencies.add(author_resource)
+
+        now = timezone.now()
+        with freeze_time(now):
+            load()
+
+        author = Author.objects.get()
+        assert author.name == "Jane Doe"
+        assert author.email == "jane@example.com"
+        assert author.bio == {"expertise": "Django", "years_experience": 5}
+
+        article = Article.objects.get()
+        assert article.title == "Test Article"
+        assert article.content == "This is a test article."
+        assert article.author == author

@@ -1,6 +1,11 @@
 import pytest
 
-from isekai.graphs import build_condensation, resolve_build_order, tarjan_scc, topo_sort
+from isekai.utils.graphs import (
+    build_condensation,
+    resolve_build_order,
+    tarjan_scc,
+    topo_sort,
+)
 
 
 class TestTarjanSCC:

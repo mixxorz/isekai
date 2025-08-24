@@ -4,9 +4,9 @@ from typing import overload
 from django.db import transaction
 from django.db.models import Prefetch
 
-from isekai.graphs import resolve_build_order
 from isekai.types import BlobRef, FileProxy, Key, Ref, Spec
 from isekai.utils import get_resource_model
+from isekai.utils.graphs import resolve_build_order
 
 Resource = get_resource_model()
 logger = logging.getLogger(__name__)

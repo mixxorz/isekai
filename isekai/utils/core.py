@@ -1,6 +1,6 @@
 from django.apps import apps
 
-from .models import AbstractResource
+from ..models import AbstractResource
 
 
 def get_resource_model() -> type[AbstractResource]:

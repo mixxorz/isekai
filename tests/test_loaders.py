@@ -1295,3 +1295,62 @@ class TestLoad:
         # No database objects should have been created
         assert Author.objects.count() == 0
         assert Article.objects.count() == 0
+
+    def test_load_is_idempotent(self):
+        """Test that running load multiple times doesn't re-load already loaded resources."""
+        content_type = ContentType.objects.get(app_label="testapp", model="author")
+
+        resource = ConcreteResource.objects.create(
+            key="author:idempotent_test",
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=content_type,
+            target_spec={
+                "name": "Idempotent Author",
+                "email": "idempotent@example.com",
+                "bio": {"test": "data"},
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        # First load operation
+        now = timezone.now()
+        with freeze_time(now):
+            load()
+
+        # Verify resource was loaded
+        resource.refresh_from_db()
+        assert resource.status == ConcreteResource.Status.LOADED
+        assert resource.loaded_at == now
+        assert resource.target_object_id is not None
+        original_target_object_id = resource.target_object_id
+
+        # Verify Author was created
+        author = Author.objects.get()
+        assert author.name == "Idempotent Author"
+        assert author.email == "idempotent@example.com"
+        assert author.bio == {"test": "data"}
+        assert author.pk == resource.target_object_id
+
+        # Second load operation - should be no-op
+        later = now + timezone.timedelta(hours=1)
+        with freeze_time(later):
+            load()
+
+        # Verify resource state unchanged
+        resource.refresh_from_db()
+        assert resource.status == ConcreteResource.Status.LOADED
+        assert resource.loaded_at == now  # Timestamp should not change
+        assert (
+            resource.target_object_id == original_target_object_id
+        )  # Same target object
+
+        # Verify no duplicate Authors were created
+        assert Author.objects.count() == 1
+        updated_author = Author.objects.get()
+        assert updated_author.pk == author.pk  # Same object
+        assert updated_author.name == "Idempotent Author"
+        assert updated_author.email == "idempotent@example.com"
+        assert updated_author.bio == {"test": "data"}

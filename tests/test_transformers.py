@@ -69,3 +69,42 @@ class TestTransform:
 
         assert resource.status == ConcreteResource.Status.TRANSFORMED
         assert resource.transformed_at == now
+
+    def test_transform_is_idempotent(self):
+        """Test that running transform multiple times doesn't re-transform already transformed resources."""
+        resource = ConcreteResource.objects.create(
+            key="url:https://example.com/test-image.png",
+            data_type="blob",
+            mime_type="image/png",
+            metadata={"alt_text": "Test image"},
+            status=ConcreteResource.Status.MINED,
+        )
+        resource.blob_data.save("test-image.png", ContentFile(b"test image data"))
+
+        # First transform operation
+        now = timezone.now()
+        with freeze_time(now):
+            transform()
+
+        # Verify resource was transformed
+        resource.refresh_from_db()
+        assert resource.status == ConcreteResource.Status.TRANSFORMED
+        assert resource.transformed_at == now
+        original_target_spec = resource.target_spec.copy()
+        original_content_type_id = resource.target_content_type_id
+
+        # Second transform operation - should not process already transformed resources
+        later = now + timezone.timedelta(hours=1)
+        with freeze_time(later):
+            transform()  # Should be no-op
+
+        # Verify resource state unchanged
+        resource.refresh_from_db()
+        assert resource.status == ConcreteResource.Status.TRANSFORMED
+        assert resource.transformed_at == now  # Timestamp should not change
+        assert (
+            resource.target_spec == original_target_spec
+        )  # Spec should remain the same
+        assert (
+            resource.target_content_type_id == original_content_type_id
+        )  # Content type should remain the same

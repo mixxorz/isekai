@@ -294,3 +294,47 @@ class TestExtract:
         response_headers = resource.metadata["response_headers"]
         assert response_headers["Content-Type"] == "text/html"
         assert response_headers["X-Source"] == "test"
+
+    @responses.activate
+    def test_extract_is_idempotent(self):
+        """Test that running extract multiple times doesn't re-extract already extracted resources."""
+        test_content = "<html><body>Test Content</body></html>"
+
+        responses.add(
+            responses.GET,
+            "https://example.com/test-page.html",
+            body=test_content,
+            headers={"Content-Type": "text/html"},
+            status=200,
+        )
+
+        # Create a seeded resource
+        resource = ConcreteResource.objects.create(
+            key="url:https://example.com/test-page.html"
+        )
+        assert resource.status == ConcreteResource.Status.SEEDED
+
+        # First extract operation
+        now = timezone.now()
+        with freeze_time(now):
+            extract()
+
+        # Verify resource was extracted
+        resource.refresh_from_db()
+        assert resource.status == ConcreteResource.Status.EXTRACTED
+        assert resource.extracted_at == now
+        assert resource.text_data == test_content
+
+        # Clear the responses to ensure second extract doesn't make HTTP requests
+        responses.reset()
+
+        # Second extract operation - should not process already extracted resources
+        later = now + timezone.timedelta(hours=1)
+        with freeze_time(later):
+            extract()  # Should be no-op
+
+        # Verify resource state unchanged
+        resource.refresh_from_db()
+        assert resource.status == ConcreteResource.Status.EXTRACTED
+        assert resource.extracted_at == now  # Timestamp should not change
+        assert resource.text_data == test_content  # Data should remain the same

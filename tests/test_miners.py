@@ -392,3 +392,70 @@ class TestMine:
 
         assert original_resource.status == ConcreteResource.Status.MINED
         assert original_resource.mined_at == now
+
+    def test_mine_is_idempotent_with_duplicate_images(self):
+        text_data_1 = """
+<!DOCTYPE html>
+<html lang="en">
+<body>
+  <img src="images/cat.jpg" alt="Cat">
+  <img src="images/dog.jpg" alt="Dog">
+</body>
+</html>
+        """
+
+        text_data_2 = """
+<!DOCTYPE html>
+<html lang="en">
+<body>
+  <img src="images/cat.jpg" alt="Same Cat">
+  <img src="images/bird.jpg" alt="Bird">
+</body>
+</html>
+        """
+
+        # Create two resources that contain overlapping images
+        resource_1 = ConcreteResource.objects.create(
+            key="url:https://example.com/page1",
+            data_type="text",
+            mime_type="text/html",
+            text_data=text_data_1,
+            status=ConcreteResource.Status.EXTRACTED,
+        )
+
+        resource_2 = ConcreteResource.objects.create(
+            key="url:https://example.com/page2",
+            data_type="text",
+            mime_type="text/html",
+            text_data=text_data_2,
+            status=ConcreteResource.Status.EXTRACTED,
+        )
+
+        # Mine operation should create unique resources only
+        mine()
+
+        # Should have: 2 HTML resources + 3 unique images (cat.jpg, dog.jpg, bird.jpg)
+        total_count = ConcreteResource.objects.count()
+        assert total_count == 5
+
+        # Verify both original resources were mined
+        resource_1.refresh_from_db()
+        resource_2.refresh_from_db()
+        assert resource_1.status == ConcreteResource.Status.MINED
+        assert resource_2.status == ConcreteResource.Status.MINED
+
+        # Verify the shared image exists only once
+        cat_resources = ConcreteResource.objects.filter(
+            key="url:https://example.com/images/cat.jpg"
+        )
+        assert cat_resources.count() == 1
+
+        # Both original resources should reference the same cat image
+        cat_resource = cat_resources.first()
+        assert cat_resource in resource_1.dependencies.all()
+        assert cat_resource in resource_2.dependencies.all()
+
+        # Second mine operation - should not create duplicates
+        mine()
+        second_count = ConcreteResource.objects.count()
+        assert second_count == 5  # Same count, no new resources

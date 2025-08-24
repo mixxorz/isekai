@@ -1,7 +1,7 @@
 import logging
 
 from isekai.types import SeededResource
-from isekai.utils import get_resource_model
+from isekai.utils.core import get_resource_model
 
 Resource = get_resource_model()
 logger = logging.getLogger(__name__)

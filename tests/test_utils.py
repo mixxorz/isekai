@@ -1,4 +1,4 @@
-from isekai.utils import get_resource_model
+from isekai.utils.core import get_resource_model
 from tests.testapp.models import ConcreteResource
 
 

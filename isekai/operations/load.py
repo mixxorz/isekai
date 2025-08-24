@@ -5,7 +5,7 @@ from django.db import transaction
 from django.db.models import Prefetch
 
 from isekai.types import BlobRef, FileProxy, Key, Ref, Spec
-from isekai.utils import get_resource_model
+from isekai.utils.core import get_resource_model
 from isekai.utils.graphs import resolve_build_order
 
 Resource = get_resource_model()

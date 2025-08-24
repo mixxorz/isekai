@@ -3,7 +3,7 @@ import logging
 from django.core.files.base import ContentFile
 
 from isekai.types import BlobResource, Key, PathFileProxy, TextResource
-from isekai.utils import get_resource_model
+from isekai.utils.core import get_resource_model
 
 Resource = get_resource_model()
 logger = logging.getLogger(__name__)

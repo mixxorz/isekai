@@ -3,7 +3,7 @@ import logging
 from django.contrib.contenttypes.models import ContentType
 
 from isekai.types import Key, TransformError
-from isekai.utils import get_resource_model
+from isekai.utils.core import get_resource_model
 
 Resource = get_resource_model()
 logger = logging.getLogger(__name__)

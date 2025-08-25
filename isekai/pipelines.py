@@ -3,7 +3,10 @@ import random
 import time
 from typing import Any, overload
 
-from django.db.models import Model
+from django.contrib.contenttypes.models import ContentType
+from django.core.files.base import ContentFile
+from django.db import transaction
+from django.db.models import Model, Prefetch
 
 from isekai.types import (
     BlobRef,
@@ -19,6 +22,8 @@ from isekai.types import (
     TextResource,
     TransformError,
 )
+from isekai.utils.core import get_resource_model
+from isekai.utils.graphs import resolve_build_order
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +97,6 @@ class Pipeline:
 
     def seed(self) -> OperationResult:
         """Seeds resources from various sources."""
-        from isekai.utils.core import get_resource_model
-
         logger.setLevel(logging.INFO)
         Resource = get_resource_model()
 
@@ -145,10 +148,6 @@ class Pipeline:
 
     def extract(self) -> OperationResult:
         """Extracts data from a source."""
-        from django.core.files.base import ContentFile
-
-        from isekai.utils.core import get_resource_model
-
         logger.setLevel(logging.INFO)
         Resource = get_resource_model()
 
@@ -254,8 +253,6 @@ class Pipeline:
 
     def mine(self) -> OperationResult:
         """Mines extracted resources to discover new resources."""
-        from isekai.utils.core import get_resource_model
-
         logger.setLevel(logging.INFO)
         Resource = get_resource_model()
 
@@ -363,10 +360,6 @@ class Pipeline:
 
     def transform(self) -> OperationResult:
         """Transforms mined resources into target specifications."""
-        from django.contrib.contenttypes.models import ContentType
-
-        from isekai.utils.core import get_resource_model
-
         logger.setLevel(logging.INFO)
         Resource = get_resource_model()
 
@@ -451,12 +444,6 @@ class Pipeline:
 
     def load(self) -> OperationResult:
         """Loads objects from resources"""
-        from django.db import transaction
-        from django.db.models import Prefetch
-
-        from isekai.utils.core import get_resource_model
-        from isekai.utils.graphs import resolve_build_order
-
         logger.setLevel(logging.INFO)
         Resource = get_resource_model()
 
@@ -856,8 +843,6 @@ def get_dummy_pipeline(
 
 def get_django_pipeline() -> Pipeline:
     """Returns a Pipeline instance configured using the Django Resource model"""
-    from isekai.utils.core import get_resource_model
-
     Resource = get_resource_model()
 
     return Pipeline(

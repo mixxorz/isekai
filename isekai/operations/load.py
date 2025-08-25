@@ -21,15 +21,13 @@ def get_created_object_stats(objects: list[Model]) -> dict[str, int]:
     return stats
 
 
-def load(verbose: bool = False) -> OperationResult:
+def load() -> OperationResult:
     """Loads objects from resources"""
-    if verbose:
-        logger.setLevel(logging.INFO)
+    logger.setLevel(logging.INFO)
 
     loaders = Resource.loaders
 
-    if verbose:
-        logger.info(f"Using {len(loaders)} loaders")
+    logger.info(f"Using {len(loaders)} loaders")
 
     resources = Resource.objects.filter(
         status=Resource.Status.TRANSFORMED,
@@ -40,8 +38,7 @@ def load(verbose: bool = False) -> OperationResult:
         )
     )
 
-    if verbose:
-        logger.info(f"Found {resources.count()} transformed resources to process")
+    logger.info(f"Found {resources.count()} transformed resources to process")
 
     # Calculate build order
     key_to_resource = {resource.key: resource for resource in resources}
@@ -59,8 +56,7 @@ def load(verbose: bool = False) -> OperationResult:
 
     graph = resolve_build_order(nodes, edges)
 
-    if verbose:
-        logger.info(f"Build order resolved into {len(graph)} phases")
+    logger.info(f"Build order resolved into {len(graph)} phases")
 
     # Load the objects
     key_to_obj: dict[str, Model] = {}
@@ -95,13 +91,11 @@ def load(verbose: bool = False) -> OperationResult:
         # Single resources are also loaded, but they don't need the same
         # circular dependency handling.
         if len(node) == 1:
-            if verbose:
-                logger.info(f"Loading resource: {list(node)[0]}")
+            logger.info(f"Loading resource: {list(node)[0]}")
         else:
-            if verbose:
-                logger.info(
-                    f"Loading {len(node)} resources with circular dependencies: {list(node)}"
-                )
+            logger.info(
+                f"Loading {len(node)} resources with circular dependencies: {list(node)}"
+            )
 
         specs = []
         for resource_key in node:
@@ -136,8 +130,7 @@ def load(verbose: bool = False) -> OperationResult:
                     resource.transition_to(Resource.Status.LOADED)
                     resources_to_update.append(resource)
 
-                    if verbose:
-                        logger.info(f"Successfully loaded: {resource.key}")
+                    logger.info(f"Successfully loaded: {resource.key}")
 
                 Resource.objects.bulk_update(
                     resources_to_update,
@@ -157,8 +150,7 @@ def load(verbose: bool = False) -> OperationResult:
                 resource.last_error = f"{e.__class__.__name__}: {str(e)}"
                 failed_resources.append(resource)
 
-                if verbose:
-                    logger.error(f"Failed to load {resource.key}: {e}")
+                logger.error(f"Failed to load {resource.key}: {e}")
 
             # Save the failed resources
             Resource.objects.bulk_update(
@@ -167,10 +159,9 @@ def load(verbose: bool = False) -> OperationResult:
             )
 
             # Stop processing - dependent nodes will also fail
-            if verbose:
-                logger.error(
-                    "Stopping load process due to node failure - remaining nodes would likely fail due to missing dependencies"
-                )
+            logger.error(
+                "Stopping load process due to node failure - remaining nodes would likely fail due to missing dependencies"
+            )
 
             return OperationResult(
                 result="failure",
@@ -186,8 +177,7 @@ def load(verbose: bool = False) -> OperationResult:
     all_resources = list(key_to_resource.values())
     loaded_count = sum(1 for r in all_resources if r.status == Resource.Status.LOADED)
 
-    if verbose:
-        logger.info(f"Load completed: {loaded_count} successful")
+    logger.info(f"Load completed: {loaded_count} successful")
 
     messages = [
         f"Processed {len(all_resources)} resources",

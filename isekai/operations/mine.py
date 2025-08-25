@@ -13,28 +13,24 @@ Resource = get_resource_model()
 logger = logging.getLogger(__name__)
 
 
-def mine(verbose: bool = False) -> OperationResult:
+def mine() -> OperationResult:
     """Mines extracted resources to discover new resources."""
-    if verbose:
-        logger.setLevel(logging.INFO)
+    logger.setLevel(logging.INFO)
 
     miners = Resource.miners
 
-    if verbose:
-        logger.info(f"Using {len(miners)} miners")
+    logger.info(f"Using {len(miners)} miners")
 
     resources = Resource.objects.filter(status=Resource.Status.EXTRACTED)
 
-    if verbose:
-        logger.info(f"Found {resources.count()} extracted resources to process")
+    logger.info(f"Found {resources.count()} extracted resources to process")
 
     seeded_resource_count_before = Resource.objects.filter(
         status=Resource.Status.SEEDED
     ).count()
 
     for resource in resources:
-        if verbose:
-            logger.info(f"Mining resource: {resource.key}")
+        logger.info(f"Mining resource: {resource.key}")
 
         # Create appropriate resource object for mining
         key = Key.from_string(resource.key)
@@ -47,10 +43,9 @@ def mine(verbose: bool = False) -> OperationResult:
             for miner in miners:
                 mined_resources.extend(miner.mine(key, resource_obj))
 
-            if verbose:
-                logger.info(
-                    f"Discovered {len(mined_resources)} new resources from {resource.key}"
-                )
+            logger.info(
+                f"Discovered {len(mined_resources)} new resources from {resource.key}"
+            )
 
             # Extract key strings for database operations
             mined_key_strings = [str(mr.key) for mr in mined_resources]
@@ -79,17 +74,14 @@ def mine(verbose: bool = False) -> OperationResult:
             ):
                 resource_obj.file_ref.path.unlink(missing_ok=True)
 
-            if verbose:
-                logger.info(f"Successfully mined: {resource.key}")
+            logger.info(f"Successfully mined: {resource.key}")
 
         except Exception as e:
             resource.last_error = f"{e.__class__.__name__}: {str(e)}"
 
-            if verbose:
-                logger.error(f"Failed to mine {resource.key}: {e}")
+            logger.error(f"Failed to mine {resource.key}: {e}")
 
-    if verbose:
-        logger.info("Saving changes to database...")
+    logger.info("Saving changes to database...")
 
     Resource.objects.bulk_update(
         resources,
@@ -108,8 +100,7 @@ def mine(verbose: bool = False) -> OperationResult:
     mined_count = sum(1 for r in resources if r.status == Resource.Status.MINED)
     error_count = sum(1 for r in resources if r.last_error)
 
-    if verbose:
-        logger.info(f"Mining completed: {mined_count} successful, {error_count} errors")
+    logger.info(f"Mining completed: {mined_count} successful, {error_count} errors")
 
     messages = [
         f"Processed {len(resources)} resources",

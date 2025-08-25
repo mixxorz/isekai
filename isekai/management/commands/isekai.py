@@ -202,11 +202,11 @@ class Command(BaseCommand):
         step_func: Operation,
     ) -> OperationResult | None:
         messages = []
-        with progress_logger.task("Seeding") as task_manager:
+        with progress_logger.task(step_name) as task_manager:
             task_manager.logger.setLevel(logging.INFO)
 
             try:
-                result = seed(verbose=True)
+                result = step_func()
                 messages = result.messages
                 task_manager.set_status(get_result_display(result.result))
             except Exception as e:

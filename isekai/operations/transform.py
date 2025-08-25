@@ -9,15 +9,13 @@ Resource = get_resource_model()
 logger = logging.getLogger(__name__)
 
 
-def transform(verbose: bool = False) -> OperationResult:
+def transform() -> OperationResult:
     """Transforms mined resources into target specifications."""
-    if verbose:
-        logger.setLevel(logging.INFO)
+    logger.setLevel(logging.INFO)
 
     transformers = Resource.transformers
 
-    if verbose:
-        logger.info(f"Using {len(transformers)} transformers")
+    logger.info(f"Using {len(transformers)} transformers")
 
     content_types = ContentType.objects.values_list("app_label", "model", "pk")
 
@@ -25,12 +23,10 @@ def transform(verbose: bool = False) -> OperationResult:
 
     resources = Resource.objects.filter(status=Resource.Status.MINED)
 
-    if verbose:
-        logger.info(f"Found {resources.count()} mined resources to process")
+    logger.info(f"Found {resources.count()} mined resources to process")
 
     for resource in resources:
-        if verbose:
-            logger.info(f"Transforming resource: {resource.key}")
+        logger.info(f"Transforming resource: {resource.key}")
 
         try:
             key = Key.from_string(resource.key)
@@ -56,17 +52,14 @@ def transform(verbose: bool = False) -> OperationResult:
 
                 resource.transition_to(Resource.Status.TRANSFORMED)
 
-                if verbose:
-                    logger.info(f"Successfully transformed: {resource.key}")
+                logger.info(f"Successfully transformed: {resource.key}")
 
         except Exception as e:
             resource.last_error = f"{e.__class__.__name__}: {str(e)}"
 
-            if verbose:
-                logger.error(f"Failed to transform {resource.key}: {e}")
+            logger.error(f"Failed to transform {resource.key}: {e}")
 
-    if verbose:
-        logger.info("Saving changes to database...")
+    logger.info("Saving changes to database...")
 
     Resource.objects.bulk_update(
         resources,
@@ -83,10 +76,9 @@ def transform(verbose: bool = False) -> OperationResult:
     )
     error_count = sum(1 for r in resources if r.last_error)
 
-    if verbose:
-        logger.info(
-            f"Transform completed: {transformed_count} successful, {error_count} errors"
-        )
+    logger.info(
+        f"Transform completed: {transformed_count} successful, {error_count} errors"
+    )
 
     messages = [
         f"Processed {len(resources)} resources",

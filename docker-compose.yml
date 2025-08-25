@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: isekai_test
+      POSTGRES_USER: isekai
+      POSTGRES_PASSWORD: isekai
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: isekai_test
+      MYSQL_USER: isekai
+      MYSQL_PASSWORD: isekai
+      MYSQL_ROOT_PASSWORD: isekai_root
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  postgres_data:
+  mysql_data:

@@ -2,14 +2,14 @@ import logging
 
 from django.contrib.contenttypes.models import ContentType
 
-from isekai.types import Key, TransformError
+from isekai.types import Key, OperationResult, TransformError
 from isekai.utils.core import get_resource_model
 
 Resource = get_resource_model()
 logger = logging.getLogger(__name__)
 
 
-def transform(verbose: bool = False) -> None:
+def transform(verbose: bool = False) -> OperationResult:
     """Transforms mined resources into target specifications."""
     if verbose:
         logger.setLevel(logging.INFO)
@@ -78,12 +78,26 @@ def transform(verbose: bool = False) -> None:
             "last_error",
         ],
     )
+    transformed_count = sum(
+        1 for r in resources if r.status == Resource.Status.TRANSFORMED
+    )
+    error_count = sum(1 for r in resources if r.last_error)
 
     if verbose:
-        transformed_count = sum(
-            1 for r in resources if r.status == Resource.Status.TRANSFORMED
-        )
-        error_count = sum(1 for r in resources if r.last_error)
         logger.info(
             f"Transform completed: {transformed_count} successful, {error_count} errors"
         )
+
+    messages = [
+        f"Processed {len(resources)} resources",
+        f"Transformed {transformed_count} resources",
+    ]
+
+    if error_count:
+        messages.append(f"Failed to transform {error_count} resources")
+
+    return OperationResult(
+        result="success" if error_count == 0 else "partial_success",
+        messages=messages,
+        metadata={},
+    )

@@ -2,14 +2,14 @@ import logging
 
 from django.core.files.base import ContentFile
 
-from isekai.types import BlobResource, Key, PathFileProxy, TextResource
+from isekai.types import BlobResource, Key, OperationResult, PathFileProxy, TextResource
 from isekai.utils.core import get_resource_model
 
 Resource = get_resource_model()
 logger = logging.getLogger(__name__)
 
 
-def extract(verbose: bool = False) -> None:
+def extract(verbose: bool = False) -> OperationResult:
     """Extracts data from a source."""
     if verbose:
         logger.setLevel(logging.INFO)
@@ -101,11 +101,24 @@ def extract(verbose: bool = False) -> None:
         ],
     )
 
+    extracted_count = sum(1 for r in resources if r.status == Resource.Status.EXTRACTED)
+    error_count = sum(1 for r in resources if r.last_error)
+
     if verbose:
-        extracted_count = sum(
-            1 for r in resources if r.status == Resource.Status.EXTRACTED
-        )
-        error_count = sum(1 for r in resources if r.last_error)
         logger.info(
             f"Extraction completed: {extracted_count} successful, {error_count} errors"
         )
+
+    messages = [
+        f"Processed {len(resources)} resources",
+        f"Extracted {extracted_count} resources",
+    ]
+
+    if error_count:
+        messages.append(f"Failed to extract {error_count} resources")
+
+    return OperationResult(
+        result="success" if error_count == 0 else "partial_success",
+        messages=messages,
+        metadata={},
+    )

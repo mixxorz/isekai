@@ -2,9 +2,9 @@ import logging
 from typing import overload
 
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import Model, Prefetch
 
-from isekai.types import BlobRef, FileProxy, Key, Ref, Spec
+from isekai.types import BlobRef, FileProxy, Key, OperationResult, Ref, Spec
 from isekai.utils.core import get_resource_model
 from isekai.utils.graphs import resolve_build_order
 
@@ -12,7 +12,16 @@ Resource = get_resource_model()
 logger = logging.getLogger(__name__)
 
 
-def load(verbose: bool = False) -> None:
+def get_created_object_stats(objects: list[Model]) -> dict[str, int]:
+    """Returns a dictionary with counts of created objects by their model name."""
+    stats = {}
+    for obj in objects:
+        model_name = obj.__class__.__name__
+        stats[model_name] = stats.get(model_name, 0) + 1
+    return stats
+
+
+def load(verbose: bool = False) -> OperationResult:
     """Loads objects from resources"""
     if verbose:
         logger.setLevel(logging.INFO)
@@ -54,7 +63,7 @@ def load(verbose: bool = False) -> None:
         logger.info(f"Build order resolved into {len(graph)} phases")
 
     # Load the objects
-    key_to_obj = {}
+    key_to_obj: dict[str, Model] = {}
 
     @overload
     def resolver(ref: BlobRef) -> FileProxy: ...
@@ -162,13 +171,31 @@ def load(verbose: bool = False) -> None:
                 logger.error(
                     "Stopping load process due to node failure - remaining nodes would likely fail due to missing dependencies"
                 )
-            break
+
+            return OperationResult(
+                result="failure",
+                messages=[
+                    f"Load failed at node with resources: {list(node)}",
+                    f"Error: {e.__class__.__name__}: {str(e)}",
+                ],
+                metadata={
+                    "object_stats": get_created_object_stats(list(key_to_obj.values()))
+                },
+            )
 
     all_resources = list(key_to_resource.values())
+    loaded_count = sum(1 for r in all_resources if r.status == Resource.Status.LOADED)
 
     if verbose:
-        loaded_count = sum(
-            1 for r in all_resources if r.status == Resource.Status.LOADED
-        )
-        error_count = sum(1 for r in all_resources if r.last_error)
-        logger.info(f"Load completed: {loaded_count} successful, {error_count} errors")
+        logger.info(f"Load completed: {loaded_count} successful")
+
+    messages = [
+        f"Processed {len(all_resources)} resources",
+        f"Loaded {loaded_count} resources",
+    ]
+
+    return OperationResult(
+        result="success",
+        messages=messages,
+        metadata={"object_stats": get_created_object_stats(list(key_to_obj.values()))},
+    )

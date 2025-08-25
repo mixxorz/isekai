@@ -1,6 +1,5 @@
 import logging
 import time
-from collections.abc import Iterator
 from contextlib import contextmanager
 
 from rich import box
@@ -38,7 +37,16 @@ class StatusColumn(ProgressColumn):
 
     def render(self, task):
         if task.finished:
-            return Text.from_markup("[[green]OK[/green]]")
+            # Check if task has a custom status set
+            status = getattr(task, "_status", "OK")
+            if status == "OK":
+                return Text.from_markup("[[green]OK[/green]]")
+            elif status == "WARN":
+                return Text.from_markup("[[yellow]WARN[/yellow]]")
+            elif status == "ERROR":
+                return Text.from_markup("[[red]ERROR[/red]]")
+            else:
+                return Text.from_markup("[[green]OK[/green]]")
         else:
             return Text.from_markup("[[yellow]RUNNING[/yellow]]")
 
@@ -124,7 +132,7 @@ class LiveProgressLogger:
             self.logger_names = logger_name  # Multiple loggers
 
     @contextmanager
-    def task(self, description: str) -> Iterator[logging.Logger]:
+    def task(self, description: str):
         """Context manager for a single task."""
         # Create fresh instances for each task
         progress = Progress(
@@ -148,9 +156,23 @@ class LiveProgressLogger:
                 logger.setLevel(logging.INFO)
                 loggers.append(logger)
 
+            # Create a task manager that can set status
+            class TaskManager:
+                def __init__(self, logger, progress, task_id):
+                    self.logger = logger
+                    self.progress = progress
+                    self.task_id = task_id
+
+                def set_status(self, status: str):
+                    """Set the final status of the task (OK, WARN, ERROR)."""
+                    task = self.progress.tasks[self.task_id]
+                    task._status = status
+
+            task_manager = TaskManager(loggers[0], progress, task_id)
+
             try:
-                # Return the first logger (or root logger) for convenience
-                yield loggers[0]
+                # Return the task manager with logger access
+                yield task_manager
             finally:
                 # Clean up all handlers
                 for logger in loggers:

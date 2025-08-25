@@ -3,7 +3,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any, Protocol, overload
+from typing import IO, TYPE_CHECKING, Any, Literal, Protocol, overload
 
 if TYPE_CHECKING:
     from django.db.models import FieldFile
@@ -212,6 +212,17 @@ class Resolver(Protocol):
     def __call__(self, ref: BlobRef) -> FileProxy: ...
     @overload
     def __call__(self, ref: Ref) -> int | str: ...
+
+
+@dataclass
+class OperationResult:
+    result: Literal["success", "partial_success", "failure"]
+    messages: list[str]
+    metadata: dict[str, Any]
+
+
+class Operation(Protocol):
+    def __call__(self, verbose: bool) -> OperationResult: ...
 
 
 # Exceptions

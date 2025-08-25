@@ -1,13 +1,19 @@
 import logging
 
-from isekai.types import BlobResource, Key, MinedResource, PathFileProxy
+from isekai.types import (
+    BlobResource,
+    Key,
+    MinedResource,
+    OperationResult,
+    PathFileProxy,
+)
 from isekai.utils.core import get_resource_model
 
 Resource = get_resource_model()
 logger = logging.getLogger(__name__)
 
 
-def mine(verbose: bool = False) -> None:
+def mine(verbose: bool = False) -> OperationResult:
     """Mines extracted resources to discover new resources."""
     if verbose:
         logger.setLevel(logging.INFO)
@@ -21,6 +27,10 @@ def mine(verbose: bool = False) -> None:
 
     if verbose:
         logger.info(f"Found {resources.count()} extracted resources to process")
+
+    seeded_resource_count_before = Resource.objects.filter(
+        status=Resource.Status.SEEDED
+    ).count()
 
     for resource in resources:
         if verbose:
@@ -90,7 +100,31 @@ def mine(verbose: bool = False) -> None:
         ],
     )
 
+    seeded_resource_count_after = Resource.objects.filter(
+        status=Resource.Status.SEEDED
+    ).count()
+
+    newly_seeded_count = seeded_resource_count_after - seeded_resource_count_before
+    mined_count = sum(1 for r in resources if r.status == Resource.Status.MINED)
+    error_count = sum(1 for r in resources if r.last_error)
+
     if verbose:
-        mined_count = sum(1 for r in resources if r.status == Resource.Status.MINED)
-        error_count = sum(1 for r in resources if r.last_error)
         logger.info(f"Mining completed: {mined_count} successful, {error_count} errors")
+
+    messages = [
+        f"Processed {len(resources)} resources",
+        f"Mined {mined_count} resources",
+    ]
+
+    if error_count:
+        messages.append(f"Failed to mine {error_count} resources")
+
+    messages.append(f"Seeded {newly_seeded_count} new resources")
+
+    return OperationResult(
+        result="success" if not error_count else "partial_success",
+        messages=messages,
+        metadata={
+            "newly_seeded_count": newly_seeded_count,
+        },
+    )

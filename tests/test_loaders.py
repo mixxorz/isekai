@@ -13,6 +13,7 @@ from tests.testapp.models import Article, Author, AuthorProfile, ConcreteResourc
 
 
 @pytest.mark.django_db
+@pytest.mark.database_backend
 class TestModelLoader:
     def test_load_spec_with_blob(self):
         @overload
@@ -747,6 +748,7 @@ class TestModelLoader:
 
 
 @pytest.mark.django_db
+@pytest.mark.database_backend
 class TestLoad:
     def test_load_simple_object(self):
         content_type = ContentType.objects.get(app_label="testapp", model="author")

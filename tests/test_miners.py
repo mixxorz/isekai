@@ -3,7 +3,7 @@ from django.utils import timezone
 from freezegun import freeze_time
 
 from isekai.miners import HTMLImageMiner
-from isekai.operations.mine import mine
+from isekai.pipelines import get_django_pipeline
 from isekai.types import Key, TextResource
 from tests.testapp.models import ConcreteResource
 
@@ -339,7 +339,8 @@ class TestMine:
 
         now = timezone.now()
         with freeze_time(now):
-            mine()
+            pipeline = get_django_pipeline()
+            pipeline.mine()
 
         expected_resources = sorted(
             [
@@ -432,7 +433,8 @@ class TestMine:
         )
 
         # Mine operation should create unique resources only
-        mine()
+        pipeline = get_django_pipeline()
+        pipeline.mine()
 
         # Should have: 2 HTML resources + 3 unique images (cat.jpg, dog.jpg, bird.jpg)
         total_count = ConcreteResource.objects.count()
@@ -456,6 +458,7 @@ class TestMine:
         assert cat_resource in resource_2.dependencies.all()
 
         # Second mine operation - should not create duplicates
-        mine()
+        pipeline = get_django_pipeline()
+        pipeline.mine()
         second_count = ConcreteResource.objects.count()
         assert second_count == 5  # Same count, no new resources

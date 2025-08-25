@@ -4,7 +4,7 @@ from django.utils import timezone
 from freezegun import freeze_time
 
 from isekai.extractors import HTTPExtractor
-from isekai.operations.extract import extract
+from isekai.pipelines import get_django_pipeline
 from isekai.types import BlobResource, Key, TextResource
 from tests.testapp.models import ConcreteResource
 
@@ -177,7 +177,8 @@ class TestExtract:
 
         now = timezone.now()
         with freeze_time(now):
-            extract()
+            pipeline = get_django_pipeline()
+            pipeline.extract()
 
         resource = ConcreteResource.objects.get()
 
@@ -217,7 +218,8 @@ class TestExtract:
 
         now = timezone.now()
         with freeze_time(now):
-            extract()
+            pipeline = get_django_pipeline()
+            pipeline.extract()
 
         resource = ConcreteResource.objects.get()
 
@@ -238,7 +240,8 @@ class TestExtract:
 
         now = timezone.now()
         with freeze_time(now):
-            extract()
+            pipeline = get_django_pipeline()
+            pipeline.extract()
 
         resource = ConcreteResource.objects.get()
 
@@ -274,7 +277,8 @@ class TestExtract:
         assert resource.status == ConcreteResource.Status.SEEDED
 
         # Run extract operation
-        extract()
+        pipeline = get_django_pipeline()
+        pipeline.extract()
 
         # Reload resource from database
         resource.refresh_from_db()
@@ -317,7 +321,8 @@ class TestExtract:
         # First extract operation
         now = timezone.now()
         with freeze_time(now):
-            extract()
+            pipeline = get_django_pipeline()
+            pipeline.extract()
 
         # Verify resource was extracted
         resource.refresh_from_db()
@@ -331,7 +336,8 @@ class TestExtract:
         # Second extract operation - should not process already extracted resources
         later = now + timezone.timedelta(hours=1)
         with freeze_time(later):
-            extract()  # Should be no-op
+            pipeline = get_django_pipeline()
+            pipeline.extract()  # Should be no-op
 
         # Verify resource state unchanged
         resource.refresh_from_db()

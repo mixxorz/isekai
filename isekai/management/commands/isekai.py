@@ -7,9 +7,8 @@ from rich.console import Console
 from rich.table import Table
 
 import isekai
-from isekai.operations import extract, load, mine, seed, transform
+from isekai.pipelines import get_django_pipeline
 from isekai.types import Operation, OperationResult
-from isekai.utils.pipeline import get_pipeline_configuration
 from isekai.utils.progress import LiveProgressLogger
 
 
@@ -46,13 +45,15 @@ class Command(BaseCommand):
         underline = "─" * len(header)
 
         # Print the header
-        console.print(header)
+        console.print(header, style="bold")
         console.print(underline)
         console.print("")  # Empty line
 
         # Display pipeline configuration
+        pipeline = get_django_pipeline()
+
         try:
-            pipeline_config = get_pipeline_configuration()
+            pipeline_config = pipeline.get_configuration()
         except Exception as e:
             console.print(f"Error loading pipeline configuration: {e}")
             return
@@ -91,9 +92,7 @@ class Command(BaseCommand):
         # Run the pipeline
         console.print()
         pipeline_start = time.time()
-        progress_logger = LiveProgressLogger(
-            total_width=50, max_log_lines=3, logger_name=None
-        )
+        progress_logger = LiveProgressLogger(logger_name=None)
 
         results = []
 
@@ -102,7 +101,7 @@ class Command(BaseCommand):
             console,
             progress_logger,
             "Seeding",
-            seed,
+            pipeline.seed,
         )
         if seed_result:
             results.append(seed_result)
@@ -115,7 +114,7 @@ class Command(BaseCommand):
                 console,
                 progress_logger,
                 "Extracting",
-                extract,
+                pipeline.extract,
             )
 
             if execute_result:
@@ -126,7 +125,7 @@ class Command(BaseCommand):
                 console,
                 progress_logger,
                 "Mining",
-                mine,
+                pipeline.mine,
             )
 
             if mine_result:
@@ -141,7 +140,7 @@ class Command(BaseCommand):
             console,
             progress_logger,
             "Transforming",
-            transform,
+            pipeline.transform,
         )
         if transform_result:
             results.append(transform_result)
@@ -151,7 +150,7 @@ class Command(BaseCommand):
             console,
             progress_logger,
             "Loading",
-            load,
+            pipeline.load,
         )
         if load_result:
             results.append(load_result)

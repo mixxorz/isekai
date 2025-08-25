@@ -113,7 +113,7 @@ class LiveProgressLogger:
     def __init__(
         self,
         total_width: int = 80,
-        max_log_lines: int = 3,
+        max_log_lines: int = 20,
         logger_name: str
         | list[str]
         | None = None,  # None = all logs, str = single logger, list = multiple loggers

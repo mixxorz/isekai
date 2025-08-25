@@ -222,7 +222,7 @@ class OperationResult:
 
 
 class Operation(Protocol):
-    def __call__(self, verbose: bool) -> OperationResult: ...
+    def __call__(self) -> OperationResult: ...
 
 
 # Exceptions

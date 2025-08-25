@@ -4,7 +4,7 @@ from django.core.files.base import ContentFile
 from django.utils import timezone
 from freezegun import freeze_time
 
-from isekai.operations.transform import transform
+from isekai.pipelines import get_django_pipeline
 from tests.testapp.models import ConcreteResource
 
 
@@ -22,7 +22,8 @@ class TestTransform:
 
         now = timezone.now()
         with freeze_time(now):
-            transform()
+            pipeline = get_django_pipeline()
+            pipeline.transform()
 
         resource.refresh_from_db()
 
@@ -54,7 +55,8 @@ class TestTransform:
 
         now = timezone.now()
         with freeze_time(now):
-            transform()
+            pipeline = get_django_pipeline()
+            pipeline.transform()
 
         resource.refresh_from_db()
 
@@ -84,7 +86,8 @@ class TestTransform:
         # First transform operation
         now = timezone.now()
         with freeze_time(now):
-            transform()
+            pipeline = get_django_pipeline()
+            pipeline.transform()
 
         # Verify resource was transformed
         resource.refresh_from_db()
@@ -96,7 +99,8 @@ class TestTransform:
         # Second transform operation - should not process already transformed resources
         later = now + timezone.timedelta(hours=1)
         with freeze_time(later):
-            transform()  # Should be no-op
+            pipeline = get_django_pipeline()
+            pipeline.transform()  # Should be no-op
 
         # Verify resource state unchanged
         resource.refresh_from_db()

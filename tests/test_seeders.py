@@ -3,7 +3,7 @@ import responses
 from django.utils import timezone
 from freezegun import freeze_time
 
-from isekai.operations.seed import seed
+from isekai.pipelines import get_django_pipeline
 from isekai.seeders import CSVSeeder, SitemapSeeder
 from tests.test_extractors import ConcreteResource
 
@@ -105,7 +105,8 @@ class TestSeed:
 
         now = timezone.now()
         with freeze_time(now):
-            seed()
+            pipeline = get_django_pipeline()
+            pipeline.seed()
 
         resources = ConcreteResource.objects.all().order_by("key")
 
@@ -161,11 +162,12 @@ class TestSeed:
         )
 
         # First seed operation
-        seed()
+        pipeline = get_django_pipeline()
+        pipeline.seed()
         first_count = ConcreteResource.objects.count()
         assert first_count == 15
 
         # Second seed operation - should not create duplicates
-        seed()
+        pipeline.seed()
         second_count = ConcreteResource.objects.count()
         assert second_count == 15  # Same count, no new resources

@@ -7,7 +7,7 @@ from freezegun import freeze_time
 from wagtail.images.models import Image
 
 from isekai.loaders import ModelLoader
-from isekai.operations.load import load
+from isekai.pipelines import get_django_pipeline
 from isekai.types import BlobRef, FileProxy, InMemoryFileProxy, Key, Ref, Spec
 from tests.testapp.models import Article, Author, AuthorProfile, ConcreteResource, Tag
 
@@ -768,7 +768,8 @@ class TestLoad:
 
         now = timezone.now()
         with freeze_time(now):
-            load()
+            pipeline = get_django_pipeline()
+            pipeline.load()
 
         author = Author.objects.get()
         assert author.name == "Jane Doe"
@@ -812,7 +813,8 @@ class TestLoad:
 
         now = timezone.now()
         with freeze_time(now):
-            load()
+            pipeline = get_django_pipeline()
+            pipeline.load()
 
         author = Author.objects.get()
         assert author.name == "Jane Doe"
@@ -877,7 +879,8 @@ class TestLoad:
 
         now = timezone.now()
         with freeze_time(now):
-            load()
+            pipeline = get_django_pipeline()
+            pipeline.load()
 
         author = Author.objects.get()
         article = Article.objects.get()
@@ -949,7 +952,8 @@ class TestLoad:
 
         now = timezone.now()
         with freeze_time(now):
-            load()
+            pipeline = get_django_pipeline()
+            pipeline.load()
 
         article = Article.objects.get()
 
@@ -1110,7 +1114,8 @@ class TestLoad:
 
         now = timezone.now()
         with freeze_time(now):
-            load()
+            pipeline = get_django_pipeline()
+            pipeline.load()
 
         # Verify all objects were created correctly
         authors = Author.objects.all().order_by("name")
@@ -1179,7 +1184,8 @@ class TestLoad:
 
         now = timezone.now()
         with freeze_time(now):
-            load()
+            pipeline = get_django_pipeline()
+            pipeline.load()
 
         # Resource should have failed to load and have error recorded
         resource = ConcreteResource.objects.get()
@@ -1217,7 +1223,8 @@ class TestLoad:
 
         now = timezone.now()
         with freeze_time(now):
-            load()
+            pipeline = get_django_pipeline()
+            pipeline.load()
 
         # Resource should have failed to load
         resource = ConcreteResource.objects.get()
@@ -1275,7 +1282,8 @@ class TestLoad:
 
         now = timezone.now()
         with freeze_time(now):
-            load()
+            pipeline = get_django_pipeline()
+            pipeline.load()
 
         # Both resources should remain unchanged
         author_resource.refresh_from_db()
@@ -1318,7 +1326,8 @@ class TestLoad:
         # First load operation
         now = timezone.now()
         with freeze_time(now):
-            load()
+            pipeline = get_django_pipeline()
+            pipeline.load()
 
         # Verify resource was loaded
         resource.refresh_from_db()
@@ -1337,7 +1346,8 @@ class TestLoad:
         # Second load operation - should be no-op
         later = now + timezone.timedelta(hours=1)
         with freeze_time(later):
-            load()
+            pipeline = get_django_pipeline()
+            pipeline.load()
 
         # Verify resource state unchanged
         resource.refresh_from_db()

@@ -1,7 +1,9 @@
 import logging
 import random
 import time
-from typing import TYPE_CHECKING, Any, overload
+from typing import Any, overload
+
+from django.db.models import Model
 
 from isekai.types import (
     BlobRef,
@@ -17,10 +19,6 @@ from isekai.types import (
     TextResource,
     TransformError,
 )
-
-if TYPE_CHECKING:
-    from django.db.models import Model
-
 
 logger = logging.getLogger(__name__)
 
@@ -663,7 +661,7 @@ class DummyPipeline(Pipeline):
         }
 
     def _simulate_work(
-        self, operation_name: str, count: int = None
+        self, operation_name: str, count: int | None = None
     ) -> tuple[int, int, int]:
         """Simulate work and return (processed, successful, errors)."""
         if count is None:
@@ -712,7 +710,7 @@ class DummyPipeline(Pipeline):
         """Simulate seeding operation."""
         logger.setLevel(logging.INFO)
 
-        processed, successful, errors = self._simulate_work("Seed")
+        _processed, successful, errors = self._simulate_work("Seed")
 
         messages = [
             f"Ran {len(self.seeders)} seeders",
@@ -807,7 +805,7 @@ class DummyPipeline(Pipeline):
         """Simulate loading operation."""
         logger.setLevel(logging.INFO)
 
-        processed, successful, errors = self._simulate_work("Load")
+        processed, successful, _errors = self._simulate_work("Load")
 
         # Simulate object creation stats
         object_stats = {

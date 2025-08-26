@@ -2,7 +2,7 @@ import pytest
 from django.utils import timezone
 from freezegun import freeze_time
 
-from isekai.miners import BaseMiner, HTMLImageMiner
+from isekai.miners import BaseMiner, HTMLDocumentMiner, HTMLImageMiner, HTMLPageMiner
 from isekai.pipelines import Pipeline, get_django_pipeline
 from isekai.types import Key, MinedResource, TextResource
 from tests.testapp.models import ConcreteResource
@@ -467,8 +467,6 @@ class TestMine:
 class TestHTMLDocumentMiner:
     def test_miner_finds_document_links(self):
         """Test that HTMLDocumentMiner finds various document links in HTML."""
-        from isekai.miners import HTMLDocumentMiner
-
         miner = HTMLDocumentMiner(allowed_domains=["*"])
 
         key = Key(type="url", value="https://example.com")
@@ -552,7 +550,6 @@ class TestHTMLDocumentMiner:
 
     def test_miner_handles_absolute_urls(self):
         """Test that HTMLDocumentMiner handles absolute document URLs correctly."""
-        from isekai.miners import HTMLDocumentMiner
 
         miner = HTMLDocumentMiner(allowed_domains=["*"])
 
@@ -590,7 +587,6 @@ class TestHTMLDocumentMiner:
 
     def test_miner_domain_allowlist(self):
         """Test that HTMLDocumentMiner filters URLs based on allowed_domains."""
-        from isekai.miners import HTMLDocumentMiner
 
         miner = HTMLDocumentMiner(allowed_domains=["example.com"])
 
@@ -620,7 +616,6 @@ class TestHTMLDocumentMiner:
 
     def test_miner_handles_non_url_keys(self):
         """Test that HTMLDocumentMiner handles non-URL keys properly."""
-        from isekai.miners import HTMLDocumentMiner
 
         miner = HTMLDocumentMiner(allowed_domains=["*"])
 
@@ -650,7 +645,6 @@ class TestHTMLDocumentMiner:
 
     def test_miner_ignores_non_document_links(self):
         """Test that HTMLDocumentMiner ignores links that are not documents."""
-        from isekai.miners import HTMLDocumentMiner
 
         miner = HTMLDocumentMiner(allowed_domains=["*"])
 
@@ -693,7 +687,6 @@ class TestHTMLDocumentMiner:
 
     def test_miner_handles_links_without_text(self):
         """Test that HTMLDocumentMiner handles links without text content."""
-        from isekai.miners import HTMLDocumentMiner
 
         miner = HTMLDocumentMiner(allowed_domains=["*"])
 
@@ -758,7 +751,6 @@ class TestHTMLDocumentMiner:
 
     def test_miner_uses_host_header_from_metadata(self):
         """Test that HTMLDocumentMiner uses Host header from metadata for base URL."""
-        from isekai.miners import HTMLDocumentMiner
 
         miner = HTMLDocumentMiner(allowed_domains=["*"])
 
@@ -798,7 +790,6 @@ class TestHTMLDocumentMiner:
 
     def test_miner_configurable_document_extensions(self):
         """Test that HTMLDocumentMiner respects custom document extensions."""
-        from isekai.miners import HTMLDocumentMiner
 
         # Only look for PDF and TXT files
         miner = HTMLDocumentMiner(
@@ -832,7 +823,6 @@ class TestHTMLDocumentMiner:
 
     def test_miner_class_attrs(self):
         """Test that HTMLDocumentMiner class attributes work like HTMLImageMiner."""
-        from isekai.miners import HTMLDocumentMiner
 
         class CustomMiner(HTMLDocumentMiner):
             allowed_domains = ["example.com", "cdn.example.com"]
@@ -842,6 +832,281 @@ class TestHTMLDocumentMiner:
 
         assert miner.allowed_domains == ["example.com", "cdn.example.com"]
         assert miner.document_extensions == ["pdf", "docx"]
+
+
+class TestHTMLPageMiner:
+    def test_miner_finds_page_links(self):
+        """Test that HTMLPageMiner finds page links in HTML."""
+        miner = HTMLPageMiner(allowed_domains=["*"])
+
+        key = Key(type="url", value="https://example.com/about/")
+        text_data = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>About Us</title>
+</head>
+<body>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/about/">About</a>
+    <a href="/about/team/">Our Team</a>
+    <a href="/about/history/">History</a>
+    <a href="/services/">Services</a>
+    <a href="/contact/">Contact</a>
+  </nav>
+
+  <main>
+    <h1>About Us</h1>
+    <p>Learn more about <a href="/about/team/">our team</a> or <a href="/about/history/">our history</a>.</p>
+
+    <!-- External link -->
+    <a href="https://partner.com/info/">Partner Info</a>
+
+    <!-- Non-page links (should be ignored) -->
+    <a href="/documents/report.pdf">Annual Report</a>
+    <a href="/images/logo.png">Logo</a>
+    <a href="mailto:info@example.com">Email Us</a>
+    <a href="#section1">Jump to Section</a>
+    <a href="javascript:void(0)">JS Link</a>
+  </main>
+</body>
+</html>
+        """
+
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
+        mined_resources = miner.mine(key, resource)
+
+        # Should find page links with normalized URLs (trailing slashes, no query params)
+        expected_keys = [
+            Key(type="url", value="https://example.com/"),
+            Key(type="url", value="https://example.com/about/"),
+            Key(type="url", value="https://example.com/about/team/"),
+            Key(type="url", value="https://example.com/about/history/"),
+            Key(type="url", value="https://example.com/services/"),
+            Key(type="url", value="https://example.com/contact/"),
+            Key(type="url", value="https://partner.com/info/"),
+        ]
+
+        assert len(mined_resources) == len(expected_keys)
+        mined_keys = [mr.key for mr in mined_resources]
+        assert sorted(mined_keys, key=str) == sorted(expected_keys, key=str)
+
+        # Check that link text is saved in metadata
+        mined_by_url = {str(mr.key): mr for mr in mined_resources}
+
+        expected_link_texts = {
+            "url:https://example.com/": "Home",
+            "url:https://example.com/about/": "About",
+            "url:https://example.com/about/team/": "Our Team",
+            "url:https://example.com/services/": "Services",
+        }
+
+        for url, expected_text in expected_link_texts.items():
+            resource = mined_by_url[url]
+            assert resource.metadata.get("link_text") == expected_text, (
+                f"Link text mismatch for {url}"
+            )
+
+    def test_miner_dependency_hierarchy_logic(self):
+        """Test that HTMLPageMiner marks dependencies based on URL hierarchy."""
+        miner = HTMLPageMiner(allowed_domains=["*"])
+
+        key = Key(type="url", value="https://example.com/about/team/")
+        text_data = """
+        <html>
+        <body>
+          <nav>
+            <!-- Higher in hierarchy - should be dependency -->
+            <a href="/">Home</a>
+            <a href="/about/">About Section</a>
+
+            <!-- Same level - should be dependency -->
+            <a href="/about/history/">History</a>
+
+            <!-- Lower in hierarchy - should NOT be dependency -->
+            <a href="/about/team/members/">Team Members</a>
+            <a href="/about/team/management/">Management</a>
+
+            <!-- Different branch - should be dependency -->
+            <a href="/services/">Services</a>
+            <a href="/contact/">Contact</a>
+          </nav>
+        </body>
+        </html>
+        """
+
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
+        mined_resources = miner.mine(key, resource)
+
+        # Check is_dependency flag
+        dependencies = [mr for mr in mined_resources if mr.is_dependency]
+        non_dependencies = [mr for mr in mined_resources if not mr.is_dependency]
+
+        dependency_urls = {str(mr.key) for mr in dependencies}
+        non_dependency_urls = {str(mr.key) for mr in non_dependencies}
+
+        expected_dependencies = {
+            "url:https://example.com/about/",  # Direct parent - only this is dependency
+        }
+
+        expected_non_dependencies = {
+            "url:https://example.com/",  # Root - not direct parent
+            "url:https://example.com/about/history/",  # Sibling - same level
+            "url:https://example.com/services/",  # Different branch
+            "url:https://example.com/contact/",  # Different branch
+            "url:https://example.com/about/team/members/",  # Child - lower in hierarchy
+            "url:https://example.com/about/team/management/",  # Child - lower in hierarchy
+        }
+
+        assert dependency_urls == expected_dependencies
+        assert non_dependency_urls == expected_non_dependencies
+
+    def test_miner_normalizes_urls(self):
+        """Test that HTMLPageMiner normalizes URLs by adding trailing slashes and removing query params."""
+        miner = HTMLPageMiner(allowed_domains=["*"])
+
+        key = Key(type="url", value="https://example.com/")
+        text_data = """
+        <html>
+        <body>
+          <!-- URLs without trailing slashes -->
+          <a href="/about">About</a>
+          <a href="/services">Services</a>
+
+          <!-- URLs with query parameters -->
+          <a href="/search?q=test&page=1">Search</a>
+          <a href="/products/?category=electronics&sort=price">Products</a>
+
+          <!-- URLs with fragments -->
+          <a href="/help#faq">Help</a>
+
+          <!-- Already normalized URLs -->
+          <a href="/contact/">Contact</a>
+        </body>
+        </html>
+        """
+
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
+        mined_resources = miner.mine(key, resource)
+
+        expected_keys = {
+            Key(type="url", value="https://example.com/about/"),
+            Key(type="url", value="https://example.com/services/"),
+            Key(
+                type="url", value="https://example.com/search/"
+            ),  # Query params removed
+            Key(
+                type="url", value="https://example.com/products/"
+            ),  # Query params removed
+            Key(type="url", value="https://example.com/help/"),  # Fragment removed
+            Key(type="url", value="https://example.com/contact/"),
+        }
+
+        assert len(mined_resources) == 6
+        mined_keys = {mr.key for mr in mined_resources}
+        assert mined_keys == expected_keys
+
+    def test_miner_ignores_non_page_links(self):
+        """Test that HTMLPageMiner ignores non-page links."""
+        miner = HTMLPageMiner(allowed_domains=["*"])
+
+        key = Key(type="url", value="https://example.com/")
+        text_data = """
+        <html>
+        <body>
+          <!-- Page links (should be found) -->
+          <a href="/about/">About</a>
+          <a href="/services/">Services</a>
+
+          <!-- Non-page links (should be ignored) -->
+          <a href="/documents/report.pdf">PDF Report</a>
+          <a href="/files/data.xlsx">Excel File</a>
+          <a href="/images/logo.png">Logo</a>
+          <a href="/videos/demo.mp4">Demo Video</a>
+          <a href="/archive.zip">Archive</a>
+          <a href="/styles.css">CSS</a>
+          <a href="/script.js">JavaScript</a>
+          <a href="mailto:test@example.com">Email</a>
+          <a href="tel:+1234567890">Phone</a>
+          <a href="javascript:void(0)">JS Link</a>
+          <a href="#section">Fragment</a>
+        </body>
+        </html>
+        """
+
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
+        mined_resources = miner.mine(key, resource)
+
+        # Should only find page links
+        expected_keys = {
+            Key(type="url", value="https://example.com/about/"),
+            Key(type="url", value="https://example.com/services/"),
+        }
+
+        assert len(mined_resources) == 2
+        mined_keys = {mr.key for mr in mined_resources}
+        assert mined_keys == expected_keys
+
+    def test_miner_domain_allowlist(self):
+        """Test that HTMLPageMiner filters URLs based on allowed_domains."""
+        miner = HTMLPageMiner(allowed_domains=["example.com"])
+
+        key = Key(type="file", value="/local/file.html")
+        text_data = """
+        <html>
+        <body>
+          <a href="relative/page/">Relative Page</a>
+          <a href="https://example.com/allowed/">Allowed Page</a>
+          <a href="https://badsite.com/blocked/">Blocked Page</a>
+        </body>
+        </html>
+        """
+
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
+        mined_resources = miner.mine(key, resource)
+
+        # Should return relative URLs with path: prefix and allowed domains with url: prefix
+        expected_keys = {
+            Key(type="path", value="relative/page/"),
+            Key(type="url", value="https://example.com/allowed/"),
+        }
+
+        assert len(mined_resources) == 2
+        mined_keys = {mr.key for mr in mined_resources}
+        assert mined_keys == expected_keys
+
+    def test_miner_handles_non_url_keys(self):
+        """Test that HTMLPageMiner handles non-URL keys properly."""
+        miner = HTMLPageMiner(allowed_domains=["*"])
+
+        # Test with a file: key - no hierarchy logic applies
+        key = Key(type="file", value="/path/to/local/file.html")
+        text_data = """
+        <html>
+        <body>
+          <a href="pages/local-page/">Local Page</a>
+          <a href="/absolute/path/page/">Absolute Path Page</a>
+        </body>
+        </html>
+        """
+
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
+        mined_resources = miner.mine(key, resource)
+
+        # Should return relative URLs with path: prefix, all marked as dependencies since no hierarchy logic
+        expected_keys = {
+            Key(type="path", value="pages/local-page/"),
+            Key(type="path", value="/absolute/path/page/"),
+        }
+
+        assert len(mined_resources) == 2
+        mined_keys = {mr.key for mr in mined_resources}
+        assert mined_keys == expected_keys
+
+        # All should be dependencies since there's no hierarchy logic for non-URL keys
+        assert all(mr.is_dependency for mr in mined_resources)
 
 
 @pytest.mark.django_db

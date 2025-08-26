@@ -255,3 +255,141 @@ class HTMLDocumentMiner(BaseHTMLMiner):
             return extension in self.document_extensions
 
         return False
+
+
+class HTMLPageMiner(BaseHTMLMiner):
+    """
+    Extracts page URLs from HTML content for web scraping.
+
+    Parses HTML using BeautifulSoup to find page URLs from:
+    - <a> href attributes pointing to HTML pages
+
+    Ignores links with file extensions (any link ending with .something)
+    Ignores email/telephone/javascript/fragment links
+
+    URL normalization:
+    - Adds trailing slashes
+    - Removes query parameters and fragments
+
+    Dependency logic:
+    - Only direct parent (immediate ancestor) is marked as dependency
+    - Only applies to URL keys, non-URL keys mark all as dependencies
+
+    Metadata extraction:
+    - Link text from <a> tags is captured and stored in metadata["link_text"]
+    """
+
+    def _extract_urls(self, soup: BeautifulSoup) -> list[tuple[str, dict[str, str]]]:
+        """Extract page URLs and link text from HTML."""
+        page_data = []
+        seen_urls = set()
+
+        for link in soup.find_all("a", href=True):
+            link_tag = cast(Tag, link)
+            href = str(link_tag.get("href", ""))
+
+            if not href or href.startswith(("#", "javascript:", "mailto:", "tel:")):
+                continue
+
+            if self._is_page_url(href):
+                normalized_href = self._normalize_url(href)
+
+                # Skip if we've already seen this URL
+                if normalized_href in seen_urls:
+                    continue
+
+                seen_urls.add(normalized_href)
+                link_text = link_tag.get_text(separator=" ", strip=True)
+                metadata = {"link_text": link_text}
+                page_data.append((normalized_href, metadata))
+
+        return page_data
+
+    def mine(
+        self, key: Key, resource: TextResource | BlobResource
+    ) -> list[MinedResource]:
+        mined_resources = []
+
+        if not isinstance(resource, TextResource):
+            return mined_resources
+
+        base_url = self._determine_base_url(key, resource)
+        soup = BeautifulSoup(resource.text, "html.parser")
+        url_data = self._extract_urls(soup)
+
+        for url, metadata in url_data:
+            parsed_url = urlparse(url)
+            if parsed_url.scheme:
+                resolved_url = url
+            elif base_url is None:
+                resolved_url = url
+            else:
+                resolved_url = urljoin(base_url, url)
+                resolved_url = self._normalize_url(resolved_url)
+
+            if self._is_domain_allowed(resolved_url) and resolved_url:
+                parsed_resolved = urlparse(resolved_url)
+                if parsed_resolved.scheme:
+                    mined_key = Key(type="url", value=resolved_url)
+                else:
+                    mined_key = Key(type="path", value=resolved_url)
+
+                # Determine if this should be a dependency based on URL hierarchy
+                is_dependency = self._should_be_dependency(key, resolved_url)
+
+                mined_resources.append(
+                    MinedResource(
+                        key=mined_key, metadata=metadata, is_dependency=is_dependency
+                    )
+                )
+
+        return mined_resources
+
+    def _is_page_url(self, url: str) -> bool:
+        """Check if URL points to a page (no file extension)."""
+        parsed_url = urlparse(url)
+        path = parsed_url.path
+
+        # If path has a file extension, it's not a page
+        if path and "." in path.split("/")[-1]:
+            return False
+
+        return True
+
+    def _normalize_url(self, url: str) -> str:
+        """Normalize URL by adding trailing slash and removing query/fragment."""
+        parsed = urlparse(url)
+
+        # Remove query parameters and fragments
+        path = parsed.path
+
+        # Add trailing slash if not present and path doesn't end with a file extension
+        if path and not path.endswith("/") and "." not in path.split("/")[-1]:
+            path += "/"
+        elif not path:
+            path = "/"
+
+        # Reconstruct URL without query/fragment
+        normalized = parsed._replace(path=path, query="", fragment="").geturl()
+        return normalized
+
+    def _should_be_dependency(self, current_key: Key, target_url: str) -> bool:
+        """Determine if target URL should be marked as a dependency based on hierarchy."""
+        if current_key.type != "url":
+            return True
+
+        current_parsed = urlparse(current_key.value)
+        target_parsed = urlparse(target_url)
+
+        if current_parsed.netloc != target_parsed.netloc:
+            return False
+
+        current_path = current_parsed.path.rstrip("/")
+        target_path = target_parsed.path.rstrip("/")
+
+        # Target is direct parent if removing the last segment from current equals target
+        if current_path.count("/") > 0:
+            parent_path = "/".join(current_path.split("/")[:-1])
+            return parent_path == target_path
+
+        return False

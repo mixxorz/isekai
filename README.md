@@ -13,10 +13,10 @@ At the core of ISEKAI is the **Resource** model. A Resource represents a single 
 The pipeline has five stages:
 
 1. **Seed** - Create the initial set of Resources, often by reading from a sitemap, CSV file, database table, or another source through custom seeders.
-2. **Extract** - Using those keys, fetch the raw bytes from the source, whether that¿s through the web with the HTTPExtractor or any other system via a custom extractor.
-3. **Mine** - Inspect extracted data to discover or ¿mine" related Resources. For example, the HTMLImageMiner will create new Resources for each image it finds linked in an HTML page.
-4. **Transform** - Using the data on the Resource, produce a target Spec (your project¿s model-shaped representation) that the Load stage will create in Django.
-5. **Load** - Create the Django models from the Resource¿s Spec. This stage calculates the optimal build order for the objects, and can reconcile circular dependencies through a two-phase create mechanism.
+2. **Extract** - Using those keys, fetch the raw bytes from the source, whether that's through the web with the HTTPExtractor or any other system via a custom extractor.
+3. **Mine** - Inspect extracted data to discover or 'mine" related Resources. For example, the HTMLImageMiner will create new Resources for each image it finds linked in an HTML page.
+4. **Transform** - Using the data on the Resource, produce a target Spec (your project's model-shaped representation) that the Load stage will create in Django.
+5. **Load** - Create the Django models from the Resource's Spec. This stage calculates the optimal build order for the objects, and can reconcile circular dependencies through a two-phase create mechanism.
 
 Each stage is handled by **processors**. ISEKAI includes built-in processors for common use cases, but you can also write your own. This means you can extract resources from any source, apply custom transformations, and load into any Django model structure.
 

@@ -401,6 +401,8 @@ class Pipeline:
                     resource.transition_to(Resource.Status.TRANSFORMED)
 
                     logger.info(f"Successfully transformed: {resource.key}")
+                else:
+                    raise TransformError("No transformer could handle the resource")
 
             except Exception as e:
                 resource.last_error = f"{e.__class__.__name__}: {str(e)}"

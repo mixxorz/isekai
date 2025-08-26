@@ -112,3 +112,31 @@ class TestTransform:
         assert (
             resource.target_content_type_id == original_content_type_id
         )  # Content type should remain the same
+
+    def test_no_transformer_found_for_resource(self):
+        """Test that resource remains unchanged if no transformer is found."""
+        resource = ConcreteResource.objects.create(
+            key="url:https://example.com/unknown-file.xyz",
+            data_type="blob",
+            mime_type="application/xyz",  # Unsupported mime type
+            metadata={},
+            status=ConcreteResource.Status.MINED,
+        )
+        resource.blob_data.save("unknown-file.xyz", ContentFile(b"unknown data"))
+
+        now = timezone.now()
+        with freeze_time(now):
+            pipeline = get_django_pipeline()
+            pipeline.transform()
+
+        resource.refresh_from_db()
+
+        # Resource should remain in MINED status with no target spec/content type
+        assert resource.status == ConcreteResource.Status.MINED
+        assert resource.transformed_at is None
+        assert resource.target_spec is None
+        assert resource.target_content_type is None
+        assert (
+            resource.last_error
+            == "TransformError: No transformer could handle the resource"
+        )

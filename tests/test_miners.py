@@ -464,6 +464,386 @@ class TestMine:
         assert second_count == 5  # Same count, no new resources
 
 
+class TestHTMLDocumentMiner:
+    def test_miner_finds_document_links(self):
+        """Test that HTMLDocumentMiner finds various document links in HTML."""
+        from isekai.miners import HTMLDocumentMiner
+
+        miner = HTMLDocumentMiner(allowed_domains=["*"])
+
+        key = Key(type="url", value="https://example.com")
+        text_data = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Document Links Test</title>
+</head>
+<body>
+  <h1>Document download page</h1>
+
+  <!-- PDF documents -->
+  <a href="documents/report.pdf">Annual Report (PDF)</a>
+  <a href="/files/manual.pdf">User Manual</a>
+
+  <!-- Word documents -->
+  <a href="documents/proposal.docx">Project Proposal</a>
+  <a href="https://example.com/files/memo.doc">Company Memo</a>
+
+  <!-- Excel spreadsheets -->
+  <a href="data/budget.xlsx">Budget Spreadsheet</a>
+  <a href="/reports/sales.xls">Sales Report</a>
+
+  <!-- PowerPoint presentations -->
+  <a href="presentations/slides.pptx">Company Presentation</a>
+  <a href="meeting/deck.ppt">Meeting Deck</a>
+
+  <!-- Other document formats -->
+  <a href="documents/readme.txt">ReadMe File</a>
+  <a href="/archive/data.csv">CSV Data</a>
+  <a href="specs/architecture.rtf">Architecture Specs</a>
+
+  <!-- Non-document links (should be ignored) -->
+  <a href="page.html">HTML Page</a>
+  <a href="image.jpg">Image File</a>
+  <a href="video.mp4">Video File</a>
+  <a href="https://example.com">Website Link</a>
+</body>
+</html>
+        """
+
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
+        mined_resources = miner.mine(key, resource)
+
+        # Check that we found all expected document URLs
+        expected_keys = [
+            Key(type="url", value="https://example.com/documents/report.pdf"),
+            Key(type="url", value="https://example.com/files/manual.pdf"),
+            Key(type="url", value="https://example.com/documents/proposal.docx"),
+            Key(type="url", value="https://example.com/files/memo.doc"),
+            Key(type="url", value="https://example.com/data/budget.xlsx"),
+            Key(type="url", value="https://example.com/reports/sales.xls"),
+            Key(type="url", value="https://example.com/presentations/slides.pptx"),
+            Key(type="url", value="https://example.com/meeting/deck.ppt"),
+            Key(type="url", value="https://example.com/documents/readme.txt"),
+            Key(type="url", value="https://example.com/archive/data.csv"),
+            Key(type="url", value="https://example.com/specs/architecture.rtf"),
+        ]
+
+        assert len(mined_resources) == len(expected_keys)
+        mined_keys = [mr.key for mr in mined_resources]
+        assert sorted(mined_keys, key=str) == sorted(expected_keys, key=str)
+
+        # Check that link text is saved in metadata
+        mined_by_url = {str(mr.key): mr for mr in mined_resources}
+
+        expected_link_texts = {
+            "url:https://example.com/documents/report.pdf": "Annual Report (PDF)",
+            "url:https://example.com/files/manual.pdf": "User Manual",
+            "url:https://example.com/documents/proposal.docx": "Project Proposal",
+            "url:https://example.com/files/memo.doc": "Company Memo",
+        }
+
+        for url, expected_text in expected_link_texts.items():
+            resource = mined_by_url[url]
+            assert resource.metadata.get("link_text") == expected_text, (
+                f"Link text mismatch for {url}"
+            )
+
+    def test_miner_handles_absolute_urls(self):
+        """Test that HTMLDocumentMiner handles absolute document URLs correctly."""
+        from isekai.miners import HTMLDocumentMiner
+
+        miner = HTMLDocumentMiner(allowed_domains=["*"])
+
+        key = Key(type="url", value="https://example.com")
+        text_data = """
+        <html>
+        <body>
+          <!-- Relative URL -->
+          <a href="docs/relative.pdf">Relative PDF</a>
+          <!-- Absolute URLs with different schemes -->
+          <a href="https://cdn.example.com/docs/absolute.pdf">Absolute HTTPS PDF</a>
+          <a href="http://old.example.com/docs/http.pdf">Absolute HTTP PDF</a>
+          <a href="//static.example.com/docs/protocol-relative.docx">Protocol Relative DOCX</a>
+        </body>
+        </html>
+        """
+
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
+        mined_resources = miner.mine(key, resource)
+
+        # Should preserve absolute URLs as-is and resolve relative ones
+        expected_keys = {
+            Key(type="url", value="https://example.com/docs/relative.pdf"),
+            Key(type="url", value="https://cdn.example.com/docs/absolute.pdf"),
+            Key(type="url", value="http://old.example.com/docs/http.pdf"),
+            Key(
+                type="url",
+                value="https://static.example.com/docs/protocol-relative.docx",
+            ),
+        }
+
+        assert len(mined_resources) == 4
+        mined_keys = {mr.key for mr in mined_resources}
+        assert mined_keys == expected_keys
+
+    def test_miner_domain_allowlist(self):
+        """Test that HTMLDocumentMiner filters URLs based on allowed_domains."""
+        from isekai.miners import HTMLDocumentMiner
+
+        miner = HTMLDocumentMiner(allowed_domains=["example.com"])
+
+        key = Key(type="file", value="/local/file.html")
+        text_data = """
+        <html>
+        <body>
+          <a href="relative/document.pdf">Relative PDF</a>
+          <a href="https://example.com/docs/allowed.pdf">Allowed PDF</a>
+          <a href="https://badsite.com/docs/blocked.pdf">Blocked PDF</a>
+        </body>
+        </html>
+        """
+
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
+        mined_resources = miner.mine(key, resource)
+
+        # Should return relative URLs with path: prefix and allowed domains with url: prefix
+        expected_keys = {
+            Key(type="path", value="relative/document.pdf"),
+            Key(type="url", value="https://example.com/docs/allowed.pdf"),
+        }
+
+        assert len(mined_resources) == 2
+        mined_keys = {mr.key for mr in mined_resources}
+        assert mined_keys == expected_keys
+
+    def test_miner_handles_non_url_keys(self):
+        """Test that HTMLDocumentMiner handles non-URL keys properly."""
+        from isekai.miners import HTMLDocumentMiner
+
+        miner = HTMLDocumentMiner(allowed_domains=["*"])
+
+        # Test with a file: key
+        key = Key(type="file", value="/path/to/local/file.html")
+        text_data = """
+        <html>
+        <body>
+          <a href="docs/local-doc.pdf">Local PDF</a>
+          <a href="/absolute/path/doc.docx">Absolute Path DOCX</a>
+        </body>
+        </html>
+        """
+
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
+        mined_resources = miner.mine(key, resource)
+
+        # Should return relative URLs with path: prefix when no base URL is available for non-URL keys
+        expected_keys = {
+            Key(type="path", value="docs/local-doc.pdf"),
+            Key(type="path", value="/absolute/path/doc.docx"),
+        }
+
+        assert len(mined_resources) == 2
+        mined_keys = {mr.key for mr in mined_resources}
+        assert mined_keys == expected_keys
+
+    def test_miner_ignores_non_document_links(self):
+        """Test that HTMLDocumentMiner ignores links that are not documents."""
+        from isekai.miners import HTMLDocumentMiner
+
+        miner = HTMLDocumentMiner(allowed_domains=["*"])
+
+        key = Key(type="url", value="https://example.com")
+        text_data = """
+        <html>
+        <body>
+          <!-- Document links (should be found) -->
+          <a href="document.pdf">PDF Document</a>
+          <a href="spreadsheet.xlsx">Excel File</a>
+
+          <!-- Non-document links (should be ignored) -->
+          <a href="page.html">HTML Page</a>
+          <a href="image.jpg">JPEG Image</a>
+          <a href="video.mp4">MP4 Video</a>
+          <a href="audio.mp3">MP3 Audio</a>
+          <a href="archive.zip">ZIP Archive</a>
+          <a href="script.js">JavaScript File</a>
+          <a href="style.css">CSS File</a>
+          <a href="https://example.com">Website Link</a>
+          <a href="mailto:test@example.com">Email Link</a>
+          <a href="javascript:void(0)">JavaScript Link</a>
+          <a href="#section">Fragment Link</a>
+        </body>
+        </html>
+        """
+
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
+        mined_resources = miner.mine(key, resource)
+
+        # Should only find document links
+        expected_keys = {
+            Key(type="url", value="https://example.com/document.pdf"),
+            Key(type="url", value="https://example.com/spreadsheet.xlsx"),
+        }
+
+        assert len(mined_resources) == 2
+        mined_keys = {mr.key for mr in mined_resources}
+        assert mined_keys == expected_keys
+
+    def test_miner_handles_links_without_text(self):
+        """Test that HTMLDocumentMiner handles links without text content."""
+        from isekai.miners import HTMLDocumentMiner
+
+        miner = HTMLDocumentMiner(allowed_domains=["*"])
+
+        key = Key(type="url", value="https://example.com")
+        text_data = """
+        <html>
+        <body>
+          <!-- Link with text -->
+          <a href="with-text.pdf">Document with text</a>
+
+          <!-- Link without text -->
+          <a href="no-text.pdf"></a>
+
+          <!-- Link with only whitespace -->
+          <a href="whitespace.pdf">   </a>
+
+          <!-- Link with nested elements but no text -->
+          <a href="nested.pdf"><img src="icon.png" alt="PDF"></a>
+
+          <!-- Link with nested text -->
+          <a href="nested-text.pdf"><span>Nested</span> Document</a>
+        </body>
+        </html>
+        """
+
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
+        mined_resources = miner.mine(key, resource)
+
+        assert len(mined_resources) == 5
+
+        mined_by_url = {str(mr.key): mr for mr in mined_resources}
+
+        # Check metadata for different cases
+        assert (
+            mined_by_url["url:https://example.com/with-text.pdf"].metadata.get(
+                "link_text"
+            )
+            == "Document with text"
+        )
+        assert (
+            mined_by_url["url:https://example.com/no-text.pdf"].metadata.get(
+                "link_text"
+            )
+            == ""
+        )
+        assert (
+            mined_by_url["url:https://example.com/whitespace.pdf"].metadata.get(
+                "link_text"
+            )
+            == ""
+        )
+        assert (
+            mined_by_url["url:https://example.com/nested.pdf"].metadata.get("link_text")
+            == ""
+        )
+        assert (
+            mined_by_url["url:https://example.com/nested-text.pdf"].metadata.get(
+                "link_text"
+            )
+            == "Nested Document"
+        )
+
+    def test_miner_uses_host_header_from_metadata(self):
+        """Test that HTMLDocumentMiner uses Host header from metadata for base URL."""
+        from isekai.miners import HTMLDocumentMiner
+
+        miner = HTMLDocumentMiner(allowed_domains=["*"])
+
+        key = Key(type="url", value="https://example.com")
+        text_data = """
+        <html>
+        <body>
+          <a href="/docs/report.pdf">Report PDF</a>
+          <a href="files/manual.docx">Manual DOCX</a>
+        </body>
+        </html>
+        """
+
+        # Create TextResource with Host header in metadata
+        resource = TextResource(
+            mime_type="text/html",
+            text=text_data,
+            metadata={
+                "response_headers": {
+                    "Host": "cdn.example.com",
+                    "Content-Type": "text/html",
+                }
+            },
+        )
+
+        mined_resources = miner.mine(key, resource)
+
+        # Should use Host header for base URL construction
+        expected_keys = {
+            Key(type="url", value="https://cdn.example.com/docs/report.pdf"),
+            Key(type="url", value="https://cdn.example.com/files/manual.docx"),
+        }
+
+        assert len(mined_resources) == 2
+        mined_keys = {mr.key for mr in mined_resources}
+        assert mined_keys == expected_keys
+
+    def test_miner_configurable_document_extensions(self):
+        """Test that HTMLDocumentMiner respects custom document extensions."""
+        from isekai.miners import HTMLDocumentMiner
+
+        # Only look for PDF and TXT files
+        miner = HTMLDocumentMiner(
+            allowed_domains=["*"], document_extensions=["pdf", "txt"]
+        )
+
+        key = Key(type="url", value="https://example.com")
+        text_data = """
+        <html>
+        <body>
+          <a href="document.pdf">PDF Document</a>
+          <a href="readme.txt">Text File</a>
+          <a href="spreadsheet.xlsx">Excel File</a>
+          <a href="presentation.pptx">PowerPoint File</a>
+        </body>
+        </html>
+        """
+
+        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
+        mined_resources = miner.mine(key, resource)
+
+        # Should only find PDF and TXT files
+        expected_keys = {
+            Key(type="url", value="https://example.com/document.pdf"),
+            Key(type="url", value="https://example.com/readme.txt"),
+        }
+
+        assert len(mined_resources) == 2
+        mined_keys = {mr.key for mr in mined_resources}
+        assert mined_keys == expected_keys
+
+    def test_miner_class_attrs(self):
+        """Test that HTMLDocumentMiner class attributes work like HTMLImageMiner."""
+        from isekai.miners import HTMLDocumentMiner
+
+        class CustomMiner(HTMLDocumentMiner):
+            allowed_domains = ["example.com", "cdn.example.com"]
+            document_extensions = ["pdf", "docx"]
+
+        miner = CustomMiner()
+
+        assert miner.allowed_domains == ["example.com", "cdn.example.com"]
+        assert miner.document_extensions == ["pdf", "docx"]
+
+
 @pytest.mark.django_db
 @pytest.mark.database_backend
 class TestMinedResourceDependencies:

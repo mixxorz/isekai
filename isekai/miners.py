@@ -13,40 +13,25 @@ class BaseMiner:
         return []
 
 
-class HTMLImageMiner(BaseMiner):
+class BaseHTMLMiner(BaseMiner):
     """
-    Extracts image URLs from HTML content with accessibility metadata.
+    Base class for HTML miners that extract URLs with common functionality.
 
-    Parses HTML using BeautifulSoup to find image URLs from:
-    - <img> src attributes
-    - <img> srcset attributes
-    - <source> srcset attributes (inside <picture> elements only)
+    Provides shared functionality for:
+    - URL resolution behavior (absolute/relative)
+    - Base URL determination from Host headers or URL keys
+    - Domain filtering with allowlists
+    - Key type determination (url vs path)
 
-    Metadata extraction:
-    - Alt text from <img> tags is captured and stored in metadata["alt_text"]
-
-    URL resolution behavior:
-    - Absolute URLs (with scheme) are returned as-is
-    - Relative URLs are resolved against a base URL when available
-    - If no base URL can be determined, relative URLs are returned unchanged
-
-    Base URL determination priority:
-    1. Host header from response metadata (preserves original scheme)
-    2. URL extracted from resource key (for url: keys)
-    3. None (relative URLs kept as-is)
-
-    Domain filtering:
-    - Relative URLs without domains are always allowed (assumed local)
-    - If allowed_domains is empty/None, all domain URLs are denied (default: deny all)
-    - If allowed_domains contains '*', all URLs are allowed
-    - Otherwise, only URLs from allowed domains are returned
+    Subclasses must implement:
+    - _extract_urls(): Extract URLs and metadata from parsed HTML
     """
 
     allowed_domains: list[str] = []
 
     def __init__(self, allowed_domains: list[str] | None = None):
         """
-        Initialize HTMLImageMiner.
+        Initialize BaseHTMLMiner.
 
         Args:
             allowed_domains: Optional list of allowed domains. If empty/None,
@@ -59,74 +44,126 @@ class HTMLImageMiner(BaseMiner):
     ) -> list[MinedResource]:
         mined_resources = []
 
-        # Only process text resources
         if not isinstance(resource, TextResource):
             return mined_resources
 
         base_url = self._determine_base_url(key, resource)
         soup = BeautifulSoup(resource.text, "html.parser")
-        image_data = []  # List of (url, alt_text) tuples
+        url_data = self._extract_urls(soup)
 
-        # Find all <img> tags
+        for url, metadata in url_data:
+            parsed_url = urlparse(url)
+            if parsed_url.scheme:
+                resolved_url = url
+            elif base_url is None:
+                resolved_url = url
+            else:
+                resolved_url = urljoin(base_url, url)
+
+            if self._is_domain_allowed(resolved_url) and resolved_url:
+                parsed_resolved = urlparse(resolved_url)
+                if parsed_resolved.scheme:
+                    mined_key = Key(type="url", value=resolved_url)
+                else:
+                    mined_key = Key(type="path", value=resolved_url)
+
+                mined_resources.append(MinedResource(key=mined_key, metadata=metadata))
+
+        return mined_resources
+
+    def _extract_urls(self, soup: BeautifulSoup) -> list[tuple[str, dict[str, str]]]:
+        """
+        Extract URLs and their metadata from parsed HTML.
+
+        Subclasses should override this method to implement their specific URL extraction logic.
+
+        Args:
+            soup: BeautifulSoup parsed HTML
+
+        Returns:
+            List of (url, metadata_dict) tuples
+        """
+        return []
+
+    def _determine_base_url(
+        self, key: Key, resource: TextResource | BlobResource
+    ) -> str | None:
+        """Determine the best base URL for resolving relative URLs."""
+        if "response_headers" in resource.metadata:
+            response_headers = resource.metadata["response_headers"]
+            if "Host" in response_headers:
+                host = response_headers["Host"]
+                if key.type == "url":
+                    original_url = key.value
+                    parsed_original = urlparse(original_url)
+                    scheme = parsed_original.scheme or "https"
+                    return f"{scheme}://{host}"
+                else:
+                    return f"https://{host}"
+
+        if key.type == "url":
+            return key.value
+
+        return None
+
+    def _is_domain_allowed(self, url: str) -> bool:
+        """Check if URL's domain is allowed based on allowed_domains."""
+        parsed_url = urlparse(url)
+
+        if not parsed_url.netloc:
+            return True
+
+        if not self.allowed_domains:
+            return False
+
+        if "*" in self.allowed_domains:
+            return True
+
+        return parsed_url.netloc in self.allowed_domains
+
+
+class HTMLImageMiner(BaseHTMLMiner):
+    """
+    Extracts image URLs from HTML content with accessibility metadata.
+
+    Parses HTML using BeautifulSoup to find image URLs from:
+    - <img> src attributes
+    - <img> srcset attributes
+    - <source> srcset attributes (inside <picture> elements only)
+
+    Metadata extraction:
+    - Alt text from <img> tags is captured and stored in metadata["alt_text"]
+    """
+
+    def _extract_urls(self, soup: BeautifulSoup) -> list[tuple[str, dict[str, str]]]:
+        """Extract image URLs and alt text from HTML."""
+        image_data = []
+
         for img in soup.find_all("img"):
             img_tag = cast(Tag, img)
-            alt_text = img_tag.get("alt", "")
+            alt_text = str(img_tag.get("alt", ""))
 
-            # Handle src attribute
             src = img_tag.get("src")
             if src:
-                image_data.append((str(src), str(alt_text)))
+                metadata = {"alt_text": alt_text} if alt_text else {}
+                image_data.append((str(src), metadata))
 
-            # Handle srcset attribute
             srcset = img_tag.get("srcset")
             if srcset:
+                metadata = {"alt_text": alt_text} if alt_text else {}
                 for url in self._parse_srcset(str(srcset)):
-                    image_data.append((url, str(alt_text)))
+                    image_data.append((url, metadata))
 
-        # Find all <source> tags inside <picture> elements
         for picture in soup.find_all("picture"):
             picture_tag = cast(Tag, picture)
             for source in picture_tag.find_all("source"):
                 source_tag = cast(Tag, source)
                 srcset = source_tag.get("srcset")
                 if srcset:
-                    # Source tags don't have alt text - that's only for img tags
                     for url in self._parse_srcset(str(srcset)):
-                        image_data.append((url, ""))
+                        image_data.append((url, {}))
 
-        # Make URLs absolute and create MinedResource objects
-        for url, alt_text in image_data:
-            # Make URL absolute if possible
-            parsed_url = urlparse(url)
-            if parsed_url.scheme:
-                # Already absolute
-                resolved_url = url
-            elif base_url is None:
-                # Keep relative URL as-is
-                resolved_url = url
-            else:
-                # Use urljoin to resolve relative URLs against the base URL
-                resolved_url = urljoin(base_url, url)
-
-            # Filter by domain allowlist
-            if self._is_domain_allowed(resolved_url) and resolved_url:
-                # Create appropriate key
-                parsed_resolved = urlparse(resolved_url)
-                if parsed_resolved.scheme:
-                    # Absolute URL gets "url" type
-                    mined_key = Key(type="url", value=resolved_url)
-                else:
-                    # Relative URL gets "path" type
-                    mined_key = Key(type="path", value=resolved_url)
-
-                # Create metadata with alt text
-                metadata = {}
-                if alt_text:
-                    metadata["alt_text"] = alt_text
-
-                mined_resources.append(MinedResource(key=mined_key, metadata=metadata))
-
-        return mined_resources
+        return image_data
 
     def _parse_srcset(self, srcset: str) -> list[str]:
         """Parse srcset attribute and extract URLs."""
@@ -134,53 +171,87 @@ class HTMLImageMiner(BaseMiner):
         for entry in srcset.split(","):
             entry = entry.strip()
             if entry:
-                # srcset entries are in format "URL [width]w" or "URL [pixel]x" or just "URL"
-                url_part = entry.split()[0]  # Take first part (URL)
+                url_part = entry.split()[0]
                 urls.append(url_part)
         return urls
 
-    def _determine_base_url(
-        self, key: Key, resource: TextResource | BlobResource
-    ) -> str | None:
-        """Determine the best base URL for resolving relative image URLs."""
-        # First priority: Host header from response metadata
-        if "response_headers" in resource.metadata:
-            response_headers = resource.metadata["response_headers"]
-            if "Host" in response_headers:
-                host = response_headers["Host"]
-                # If we have a URL key, preserve its scheme
-                if key.type == "url":
-                    original_url = key.value
-                    parsed_original = urlparse(original_url)
-                    scheme = parsed_original.scheme or "https"
-                    return f"{scheme}://{host}"
-                else:
-                    # For non-URL keys, default to https
-                    return f"https://{host}"
 
-        # Second priority: Extract URL from key if it's a URL key
-        if key.type == "url":
-            return key.value
+class HTMLDocumentMiner(BaseHTMLMiner):
+    """
+    Extracts document URLs from HTML content with link metadata.
 
-        # No base URL available for non-URL keys without Host header
-        return None
+    Parses HTML using BeautifulSoup to find document URLs from:
+    - <a> href attributes pointing to document files
 
-    def _is_domain_allowed(self, url: str) -> bool:
-        """Check if URL's domain is allowed based on allowed_domains."""
-        # Parse URL to get the domain
+    Default supported document formats:
+    - PDF: pdf
+    - Word documents: doc, docx
+    - Excel spreadsheets: xls, xlsx
+    - PowerPoint presentations: ppt, pptx
+    - Text files: txt
+    - CSV files: csv
+    - RTF files: rtf
+
+    Metadata extraction:
+    - Link text from <a> tags is captured and stored in metadata["link_text"]
+    """
+
+    document_extensions: list[str] = [
+        "pdf",
+        "doc",
+        "docx",
+        "xls",
+        "xlsx",
+        "ppt",
+        "pptx",
+        "txt",
+        "csv",
+        "rtf",
+    ]
+
+    def __init__(
+        self,
+        allowed_domains: list[str] | None = None,
+        document_extensions: list[str] | None = None,
+    ):
+        """
+        Initialize HTMLDocumentMiner.
+
+        Args:
+            allowed_domains: Optional list of allowed domains. If empty/None,
+                           all URLs are denied. Use ['*'] to allow all domains.
+            document_extensions: Optional list of document file extensions to look for.
+                               Should be lowercase without dots (e.g., ['pdf', 'docx']).
+                               If None, uses default extensions.
+        """
+        super().__init__(allowed_domains)
+        self.document_extensions = document_extensions or self.document_extensions
+
+    def _extract_urls(self, soup: BeautifulSoup) -> list[tuple[str, dict[str, str]]]:
+        """Extract document URLs and link text from HTML."""
+        document_data = []
+
+        for link in soup.find_all("a", href=True):
+            link_tag = cast(Tag, link)
+            href = str(link_tag.get("href", ""))
+
+            if not href or href.startswith(("#", "javascript:", "mailto:")):
+                continue
+
+            if self._is_document_url(href):
+                link_text = link_tag.get_text(separator=" ", strip=True)
+                metadata = {"link_text": link_text}
+                document_data.append((href, metadata))
+
+        return document_data
+
+    def _is_document_url(self, url: str) -> bool:
+        """Check if URL points to a document file based on file extension."""
         parsed_url = urlparse(url)
+        path = parsed_url.path.lower()
 
-        # For relative URLs without a domain, always allow them (assume local)
-        if not parsed_url.netloc:
-            return True
+        if "." in path:
+            extension = path.split(".")[-1]
+            return extension in self.document_extensions
 
-        # If no allowed domains specified, deny all domains (but relative URLs already passed)
-        if not self.allowed_domains:
-            return False
-
-        # If allowed domains contains '*', allow all domains
-        if "*" in self.allowed_domains:
-            return True
-
-        # Check if the domain is in the allowed domains
-        return parsed_url.netloc in self.allowed_domains
+        return False

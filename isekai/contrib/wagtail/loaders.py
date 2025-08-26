@@ -6,28 +6,31 @@ from isekai.types import Key, Ref, Resolver, Spec
 
 
 class PageLoader(ModelLoader):
+    _parent_page_prefix = "__wagtail_parent_page"
+
     def load(
         self, specs: list[tuple[Key, Spec]], resolver: Resolver
     ) -> list[tuple[Key, models.Model]]:
         # Check if any of the specs are for Wagtail Page models
-        if not any(spec.attributes.get("__wagtail_parent_page") for _, spec in specs):
+        if not any(spec.attributes.get(self._parent_page_prefix) for _, spec in specs):
             # If not, let another loader handle it
             return []
 
         page_specs = [
             (key, spec)
             for key, spec in specs
-            if spec.attributes.get("__wagtail_parent_page")
+            if spec.attributes.get(self._parent_page_prefix)
         ]
 
         key_to_parent_page_ref = {}
 
         for key, spec in page_specs:
-            # Remove the __wagtail_parent_page attribute after capturing it
+            # Remove the parent page attribute after capturing it
             # so that ModelLoader doesn't try to process it
-            parent_page_ref_or_id = spec.attributes.pop("__wagtail_parent_page")
+            parent_page_ref_or_id = spec.attributes.pop(self._parent_page_prefix)
             key_to_parent_page_ref[key] = parent_page_ref_or_id
 
+        # Let ModelLoader create the pages first
         created_objects = super().load(specs, resolver)
 
         # Move the created pages to their actual parent pages
@@ -53,7 +56,7 @@ class PageLoader(ModelLoader):
                     parent_page = Page.objects.get(pk=parent_page_id)
             else:
                 raise ValueError(
-                    f"Invalid __wagtail_parent_page value: {parent_page_ref_or_id}"
+                    f"Invalid {self._parent_page_prefix} value: {parent_page_ref_or_id}"
                 )
 
             page.move(parent_page, pos="last-child")

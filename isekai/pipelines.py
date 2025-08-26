@@ -284,9 +284,6 @@ class Pipeline:
                     f"Discovered {len(mined_resources)} new resources from {resource.key}"
                 )
 
-                # Extract key strings for database operations
-                mined_key_strings = [str(mr.key) for mr in mined_resources]
-
                 # Create Resource objects for new keys
                 new_resources = [
                     Resource(
@@ -300,9 +297,11 @@ class Pipeline:
                 Resource.objects.bulk_create(new_resources, ignore_conflicts=True)
 
                 # Update the original resource that was mined
-                # NB: We set the dependencies whether or not they were created now
-                # by the bulk_create or already existed.
-                resource.dependencies.set(mined_key_strings)  # type: ignore[call-arg]
+                # Only set dependencies for resources marked as dependencies
+                dependency_key_strings = [
+                    str(mr.key) for mr in mined_resources if mr.is_dependency
+                ]
+                resource.dependencies.set(dependency_key_strings)  # type: ignore[call-arg]
                 resource.transition_to(Resource.Status.MINED)
                 resource.save()
 

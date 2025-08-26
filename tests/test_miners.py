@@ -2,9 +2,9 @@ import pytest
 from django.utils import timezone
 from freezegun import freeze_time
 
-from isekai.miners import HTMLImageMiner
-from isekai.pipelines import get_django_pipeline
-from isekai.types import Key, TextResource
+from isekai.miners import BaseMiner, HTMLImageMiner
+from isekai.pipelines import Pipeline, get_django_pipeline
+from isekai.types import Key, MinedResource, TextResource
 from tests.testapp.models import ConcreteResource
 
 
@@ -462,3 +462,71 @@ class TestMine:
         pipeline.mine()
         second_count = ConcreteResource.objects.count()
         assert second_count == 5  # Same count, no new resources
+
+
+@pytest.mark.django_db
+@pytest.mark.database_backend
+class TestMinedResourceDependencies:
+    def test_mined_resource_with_is_dependency_false_not_added_to_dependencies(self):
+        """Test that MinedResource with is_dependency=False are not added as dependencies."""
+
+        # Create a custom miner that returns both dependency and non-dependency resources
+
+        class CustomMiner(BaseMiner):
+            def mine(self, key: Key, resource):
+                return [
+                    MinedResource(
+                        key=Key(type="url", value="https://example.com/dependency.jpg"),
+                        metadata={"alt_text": "Dependency image"},
+                        is_dependency=True,  # This should be added as dependency
+                    ),
+                    MinedResource(
+                        key=Key(
+                            type="url", value="https://example.com/non-dependency.jpg"
+                        ),
+                        metadata={"alt_text": "Non-dependency image"},
+                        is_dependency=False,  # This should NOT be added as dependency
+                    ),
+                ]
+
+        # Create a resource to mine
+        resource = ConcreteResource.objects.create(
+            key="url:https://example.com/test.html",
+            mime_type="text/html",
+            data_type="text",
+            text_data="<html><body><p>Test content</p></body></html>",
+            metadata={},
+            status=ConcreteResource.Status.EXTRACTED,
+        )
+
+        # Create pipeline with custom miner
+        pipeline = Pipeline(
+            seeders=[],
+            extractors=[],
+            miners=[CustomMiner()],
+            transformers=[],
+            loaders=[],
+        )
+
+        now = timezone.now()
+        with freeze_time(now):
+            pipeline.mine()
+
+        # Refresh resource from database
+        resource.refresh_from_db()
+
+        # Check that only the dependency resource was added
+        dependencies = list(resource.dependencies.all())
+        dependency_keys = [dep.key for dep in dependencies]
+
+        # Only the resource with is_dependency=True should be in dependencies
+        assert "url:https://example.com/dependency.jpg" in dependency_keys
+        assert "url:https://example.com/non-dependency.jpg" not in dependency_keys
+
+        # Both resources should still be created in the database
+        assert ConcreteResource.objects.filter(
+            key="url:https://example.com/dependency.jpg"
+        ).exists()
+        assert ConcreteResource.objects.filter(
+            key="url:https://example.com/non-dependency.jpg"
+        ).exists()

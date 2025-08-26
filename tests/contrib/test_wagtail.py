@@ -1,4 +1,4 @@
-from isekai.contrib.wagtail import ImageTransformer
+from isekai.contrib.wagtail.transformers import DocumentTransformer, ImageTransformer
 from isekai.types import BlobRef, BlobResource, InMemoryFileProxy, Key
 
 
@@ -47,4 +47,96 @@ class TestWagtailImageTransformer:
 
         spec = transformer.transform(key, resource)
 
+        assert spec is None
+
+
+class TestWagtailDocumentTransformer:
+    def test_transform_document(self):
+        transformer = DocumentTransformer()
+
+        key = Key(type="url", value="https://example.com/document.pdf")
+
+        # Create PDF document content
+        pdf_data = b"%PDF-1.4\n1 0 obj\n<<\n/Type /Catalog\n/Pages 2 0 R\n>>\nendobj\n"
+
+        resource = BlobResource(
+            mime_type="application/pdf",
+            filename="document.pdf",
+            file_ref=InMemoryFileProxy(content=pdf_data),
+            metadata={},
+        )
+
+        spec = transformer.transform(key, resource)
+
+        assert spec
+        assert spec.content_type == "wagtaildocs.Document"
+        assert spec.attributes == {
+            "title": "document.pdf",
+            "file": BlobRef(key),
+        }
+
+    def test_transform_word_document(self):
+        transformer = DocumentTransformer()
+
+        key = Key(type="file", value="/path/to/document.docx")
+
+        resource = BlobResource(
+            mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename="report.docx",
+            file_ref=InMemoryFileProxy(content=b"Word document content"),
+            metadata={},
+        )
+
+        spec = transformer.transform(key, resource)
+
+        assert spec
+        assert spec.content_type == "wagtaildocs.Document"
+        assert spec.attributes == {
+            "title": "report.docx",
+            "file": BlobRef(key),
+        }
+
+    def test_disallowed_mime_types(self):
+        transformer = DocumentTransformer()
+
+        key = Key(type="url", value="https://example.com/image.png")
+
+        resource = BlobResource(
+            mime_type="image/png",
+            filename="image.png",
+            file_ref=InMemoryFileProxy(content=b"PNG image data"),
+            metadata={},
+        )
+
+        spec = transformer.transform(key, resource)
+
+        assert spec is None
+
+    def test_custom_allowed_mime_types(self):
+        # Test with custom allowed mime types
+        transformer = DocumentTransformer(allowed_mime_types=["text/plain"])
+
+        key = Key(type="file", value="/path/to/text.txt")
+
+        resource = BlobResource(
+            mime_type="text/plain",
+            filename="text.txt",
+            file_ref=InMemoryFileProxy(content=b"Plain text content"),
+            metadata={},
+        )
+
+        spec = transformer.transform(key, resource)
+
+        assert spec
+        assert spec.content_type == "wagtaildocs.Document"
+
+        # Test that PDF is now not allowed
+        pdf_resource = BlobResource(
+            mime_type="application/pdf",
+            filename="document.pdf",
+            file_ref=InMemoryFileProxy(content=b"%PDF content"),
+            metadata={},
+        )
+
+        spec = transformer.transform(key, pdf_resource)
         assert spec is None

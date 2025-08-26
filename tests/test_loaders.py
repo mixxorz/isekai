@@ -52,6 +52,42 @@ class TestModelLoader:
         with image.file.open() as saved_file:
             assert saved_file.read() == expected_content
 
+    def test_load_spec_with_document_blob(self):
+        @overload
+        def resolver(ref: BlobRef) -> FileProxy: ...
+        @overload
+        def resolver(ref: Ref) -> int | str: ...
+
+        def resolver(ref: Ref) -> FileProxy | int | str:
+            text_content = b"This is a sample document for testing."
+            return InMemoryFileProxy(text_content)
+            raise AssertionError(f"Unexpected ref: {ref}")
+
+        loader = ModelLoader()
+
+        key = Key(type="url", value="https://example.com/sample.txt")
+        spec = Spec(
+            content_type="wagtaildocs.Document",
+            attributes={
+                "title": "sample.txt",
+                "file": BlobRef(key),
+            },
+        )
+
+        objects = loader.load([(key, spec)], resolver)
+
+        from wagtail.documents.models import Document
+
+        document = objects[0][1]
+        assert isinstance(document, Document)
+        assert document.title == "sample.txt"
+
+        expected_content = b"This is a sample document for testing."
+
+        # Read from the saved file to compare content
+        with document.file.open() as saved_file:
+            assert saved_file.read() == expected_content
+
     def test_load_simple_model(self):
         """Test loading a simple model without relationships."""
 

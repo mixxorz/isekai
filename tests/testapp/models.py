@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 from django.db import models
 
-from isekai.contrib.wagtail import ImageTransformer
+from isekai.contrib.wagtail.transformers import DocumentTransformer, ImageTransformer
 from isekai.extractors import BaseExtractor, HTTPExtractor
 from isekai.loaders import ModelLoader
 from isekai.miners import HTMLImageMiner
@@ -102,6 +102,7 @@ class ConcreteResource(AbstractResource):
     miners = [HTMLImageMiner(allowed_domains=["*"])]
     transformers = [
         ImageTransformer(),
+        DocumentTransformer(),
         FooBarTransformer(),
     ]
     loaders = [

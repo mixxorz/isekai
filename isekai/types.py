@@ -114,7 +114,7 @@ class MinedResource:
 @dataclass(frozen=True, slots=True)
 class Spec:
     content_type: str
-    attributes: Mapping[str, Any]
+    attributes: dict[str, Any]
 
     def to_dict(self):
         def serialize_value(value):

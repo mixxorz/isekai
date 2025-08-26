@@ -190,7 +190,10 @@ class ModelLoader(BaseLoader):
                 else:
                     obj_fields[field_name] = field_value
 
-        # Create object with all processed fields
+        return self._save_object(model_class, obj_fields)
+
+    def _save_object(self, model_class, obj_fields):
+        """Save the object to the database."""
         obj = model_class(**obj_fields)
         obj.save()
         return obj

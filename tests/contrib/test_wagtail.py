@@ -1,5 +1,16 @@
+from datetime import date
+
+import pytest
+from django.contrib.contenttypes.models import ContentType
+from django.utils import timezone
+from freezegun import freeze_time
+from wagtail.models import Site
+
+from isekai.contrib.wagtail.loaders import PageLoader
 from isekai.contrib.wagtail.transformers import DocumentTransformer, ImageTransformer
-from isekai.types import BlobRef, BlobResource, InMemoryFileProxy, Key
+from isekai.pipelines import Pipeline
+from isekai.types import BlobRef, BlobResource, InMemoryFileProxy, Key, Ref
+from tests.testapp.models import ConcreteResource, ReportIndexPage, ReportPage
 
 
 class TestWagtailImageTransformer:
@@ -140,3 +151,106 @@ class TestWagtailDocumentTransformer:
 
         spec = transformer.transform(key, pdf_resource)
         assert spec is None
+
+
+@pytest.mark.django_db
+@pytest.mark.database_backend
+class TestWagtailPageLoader:
+    def test_page_loader_creates_parent_child_pages_from_transformed_resources(self):
+        """Test that PageLoader creates Wagtail pages"""
+
+        report_index_ct = ContentType.objects.get_for_model(ReportIndexPage)
+        report_page_ct = ContentType.objects.get_for_model(ReportPage)
+
+        site_root = Site.objects.get(is_default_site=True).root_page
+
+        report_index_resource = ConcreteResource.objects.create(
+            key="url:https://example.com/reports",
+            mime_type="application/json",
+            data_type="text",
+            text_data="unused",
+            metadata={},
+            target_content_type=report_index_ct,
+            target_spec={
+                "title": "Reports",
+                "intro": "<p>This is the reports index page</p>",
+                "slug": "reports",
+                "__wagtail_parent_page": site_root.pk,
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        report_page_resource = ConcreteResource.objects.create(
+            key="url:https://example.com/reports/annual-2023",
+            mime_type="application/json",
+            data_type="text",
+            text_data="unused",
+            metadata={},
+            target_content_type=report_page_ct,
+            target_spec={
+                "title": "Annual Report 2023",
+                "intro": "<p>Introduction to the annual report</p>",
+                "body": "<p>This is the body of the annual report</p>",
+                "date": "2023-12-31",
+                "slug": "annual-report-2023",
+                "__wagtail_parent_page": str(
+                    Ref(Key.from_string(report_index_resource.key))
+                ),
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        report_page_resource.dependencies.add(report_index_resource)
+
+        # Run the pipeline load operation
+        now = timezone.now()
+        with freeze_time(now):
+            pipeline = Pipeline(
+                seeders=[],
+                extractors=[],
+                miners=[],
+                transformers=[],
+                loaders=[PageLoader()],
+            )
+            result = pipeline.load()
+
+        # Verify the operation was successful
+        assert result.result == "success"
+
+        # Verify the pages were created correctly
+        assert ReportIndexPage.objects.filter(title="Reports").exists()
+        assert ReportPage.objects.filter(title="Annual Report 2023").exists()
+
+        # Verify parent-child relationship
+        created_report_index = ReportIndexPage.objects.get(title="Reports")
+        created_report_page = ReportPage.objects.get(title="Annual Report 2023")
+
+        assert created_report_page.get_parent().specific == created_report_index
+        assert (
+            created_report_index.get_children()
+            .filter(pk=created_report_page.pk)
+            .exists()
+        )
+
+        # Verify page content
+        assert created_report_index.intro == "<p>This is the reports index page</p>"
+        assert created_report_page.intro == "<p>Introduction to the annual report</p>"
+        assert (
+            created_report_page.body == "<p>This is the body of the annual report</p>"
+        )
+        assert created_report_page.date == date(2023, 12, 31)
+
+        # Verify URLs
+        assert created_report_index.slug == "reports"
+        assert created_report_page.slug == "annual-report-2023"
+
+        # Verify resources are marked as loaded
+        report_index_resource.refresh_from_db()
+        report_page_resource.refresh_from_db()
+
+        assert report_index_resource.status == ConcreteResource.Status.LOADED
+        assert report_page_resource.status == ConcreteResource.Status.LOADED
+        assert report_index_resource.target_object_id == created_report_index.pk
+        assert report_page_resource.target_object_id == created_report_page.pk
+        assert report_index_resource.loaded_at == now
+        assert report_page_resource.loaded_at == now

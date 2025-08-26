@@ -1,6 +1,9 @@
 from typing import TYPE_CHECKING
 
 from django.db import models
+from wagtail.admin.panels import FieldPanel
+from wagtail.fields import RichTextField
+from wagtail.models import Page
 
 from isekai.contrib.wagtail.transformers import DocumentTransformer, ImageTransformer
 from isekai.extractors import BaseExtractor, HTTPExtractor
@@ -113,3 +116,36 @@ class ConcreteResource(AbstractResource):
         app_label = "testapp"
         verbose_name = "Concrete Resource"
         verbose_name_plural = "Concrete Resources"
+
+
+# Wagtail page models for testing
+class ReportIndexPage(Page):
+    intro = RichTextField(blank=True)
+
+    content_panels = Page.content_panels + [
+        FieldPanel("intro"),
+    ]
+
+    class Meta:
+        app_label = "testapp"
+
+    def __str__(self):
+        return self.title
+
+
+class ReportPage(Page):
+    intro = RichTextField(blank=True)
+    body = RichTextField(blank=True)
+    date = models.DateField("Report date", null=True, blank=True)
+
+    content_panels = Page.content_panels + [
+        FieldPanel("intro"),
+        FieldPanel("body"),
+        FieldPanel("date"),
+    ]
+
+    class Meta:
+        app_label = "testapp"
+
+    def __str__(self):
+        return self.title

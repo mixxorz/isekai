@@ -51,7 +51,7 @@ class SitemapSeeder(BaseSeeder):
     returning them as 'url:{url}' keys.
     """
 
-    sitemap_url: str
+    sitemap_url: str | None = None
 
     def __init__(self, sitemap_url: str | None = None):
         self.sitemap_url = sitemap_url or self.sitemap_url
@@ -64,17 +64,18 @@ class SitemapSeeder(BaseSeeder):
     def seed(self) -> list[SeededResource]:
         resources = []
 
-        response = requests.get(self.sitemap_url)
-        response.raise_for_status()
+        if self.sitemap_url:
+            response = requests.get(self.sitemap_url)
+            response.raise_for_status()
 
-        root = ET.fromstring(response.content)
-        # Handle XML namespace for sitemap
-        namespaces = {"sitemap": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+            root = ET.fromstring(response.content)
+            # Handle XML namespace for sitemap
+            namespaces = {"sitemap": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 
-        for url_elem in root.findall("sitemap:url", namespaces):
-            loc_elem = url_elem.find("sitemap:loc", namespaces)
-            if loc_elem is not None and loc_elem.text:
-                key = Key(type="url", value=loc_elem.text)
-                resources.append(SeededResource(key=key, metadata={}))
+            for url_elem in root.findall("sitemap:url", namespaces):
+                loc_elem = url_elem.find("sitemap:loc", namespaces)
+                if loc_elem is not None and loc_elem.text:
+                    key = Key(type="url", value=loc_elem.text)
+                    resources.append(SeededResource(key=key, metadata={}))
 
         return resources

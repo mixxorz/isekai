@@ -11,6 +11,7 @@ from django.db.models import Model, Prefetch
 from isekai.types import (
     BlobRef,
     BlobResource,
+    FieldFileProxy,
     FileProxy,
     Key,
     MinedResource,
@@ -487,16 +488,31 @@ class Pipeline:
         @overload
         def resolver(ref: Ref) -> int | str: ...
 
-        def resolver(ref: Ref) -> FileProxy | int | str:
-            # Try to find the object in the pool of resources currently being loaded
-            if str(ref.key) in key_to_obj:
-                return key_to_obj[str(ref.key)].pk
+        def resolver(ref: Ref | BlobRef) -> FileProxy | int | str:
+            # If it's a Ref, we must return a primary key
+            if type(ref) is Ref:
+                # Try to find the object in the pool of resources currently being loaded
+                if str(ref.key) in key_to_obj:
+                    return key_to_obj[str(ref.key)].pk
 
-            # If it's not there, then it's a reference to a resource that has
-            # already been loaded
-            if obj := Resource.objects.filter(key=str(ref.key)).first():
-                if obj and obj.target_object_id:
-                    return obj.target_object_id
+                # If it's not there, then it's a reference to a resource that has
+                # already been loaded
+                if obj := Resource.objects.filter(key=str(ref.key)).first():
+                    if obj and obj.target_object_id:
+                        return obj.target_object_id
+
+            # If it's a BlobRef, we must return a FileProxy
+            elif type(ref) is BlobRef:
+                if str(ref.key) in key_to_obj:
+                    resource = key_to_resource[str(ref.key)]
+                    if resource.blob_data:
+                        return FieldFileProxy(ff=resource.blob_data)
+
+                # If it's not there, then it's a reference to a resource that has
+                # already been loaded
+                if obj := Resource.objects.filter(key=str(ref.key)).first():
+                    if obj and obj.blob_data:
+                        return FieldFileProxy(ff=obj.blob_data)
 
             # If the framework is working correctly, it is logically impossible to
             # reach this case. The build order resolver ensures that all dependency

@@ -2,6 +2,7 @@ from typing import overload
 
 import pytest
 from django.contrib.contenttypes.models import ContentType
+from django.core.files.base import ContentFile
 from django.utils import timezone
 from freezegun import freeze_time
 from wagtail.images.models import Image
@@ -1341,6 +1342,52 @@ class TestLoad:
         # No database objects should have been created
         assert Author.objects.count() == 0
         assert Article.objects.count() == 0
+
+    def test_load_with_blob_ref(self):
+        """Test loading resources with BlobRef (like images) works correctly."""
+        image_key = Key(type="image", value="test_image")
+
+        # Create resource with BlobRef in target_spec
+        resource = ConcreteResource.objects.create(
+            key=str(image_key),
+            mime_type="image/jpeg",
+            data_type="binary",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="wagtailimages", model="image"
+            ),
+            target_spec={
+                "title": "blue_square.jpg",
+                "file": str(BlobRef(image_key)),
+                "description": "A test image with BlobRef",
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        # Add real image data to the resource
+        with open("tests/files/blue_square.jpg", "rb") as f:
+            image_data = f.read()
+        resource.blob_data.save("blue_square.jpg", ContentFile(image_data))
+
+        now = timezone.now()
+        with freeze_time(now):
+            pipeline = get_django_pipeline()
+            pipeline.load()
+
+        # Verify image was created correctly
+        image = Image.objects.get()
+        assert image.title == "blue_square.jpg"
+        assert image.description == "A test image with BlobRef"
+
+        # Verify the file content matches the real image data
+        with image.file.open() as saved_file:
+            assert saved_file.read() == image_data
+
+        # Verify resource is marked as loaded
+        resource.refresh_from_db()
+        assert resource.status == ConcreteResource.Status.LOADED
+        assert resource.loaded_at == now
+        assert resource.target_object == image
 
     def test_load_is_idempotent(self):
         """Test that running load multiple times doesn't re-load already loaded resources."""

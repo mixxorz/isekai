@@ -183,7 +183,7 @@ class ModelLoader(BaseLoader):
                 # Regular field - but skip JSON fields with refs since Ref objects aren't JSON serializable
                 if (
                     field
-                    and isinstance(field, models.JSONField)
+                    and field.get_internal_type() == "JSONField"
                     and self._has_refs(field_value)
                 ):
                     pass  # Will be resolved and saved in JSON phase after all objects exist
@@ -201,7 +201,7 @@ class ModelLoader(BaseLoader):
     def _update_json_fields(self, obj, spec, key_to_object, resolver):
         """Update JSON fields with resolved references."""
         json_fields = [
-            f for f in obj._meta.get_fields() if isinstance(f, models.JSONField)
+            f for f in obj._meta.get_fields() if f.get_internal_type() == "JSONField"
         ]
 
         updated = False

@@ -2,7 +2,7 @@ from django.db import models
 from wagtail.models import Page
 
 from isekai.loaders import ModelLoader
-from isekai.types import Key, Ref, Resolver, Spec
+from isekai.types import Key, PkRef, Resolver, Spec
 
 
 class PageLoader(ModelLoader):
@@ -47,7 +47,7 @@ class PageLoader(ModelLoader):
             # If not, we can use resolver
             if isinstance(parent_page_ref_or_id, int):
                 parent_page = Page.objects.get(pk=parent_page_ref_or_id)
-            elif isinstance(parent_page_ref_or_id, Ref):
+            elif isinstance(parent_page_ref_or_id, PkRef):
                 parent_ref = parent_page_ref_or_id
                 if parent_ref.key in key_to_page:
                     parent_page = key_to_page[parent_ref.key]

@@ -6,7 +6,7 @@ from django.core.files.base import ContentFile
 from django.db import connection, models, transaction
 from modelcluster.fields import ParentalKey, ParentalManyToManyField
 
-from isekai.types import BlobRef, Key, Ref, Resolver, Spec
+from isekai.types import BaseRef, BlobRef, Key, ModelRef, PkRef, Resolver, Spec
 
 
 class BaseLoader:
@@ -34,7 +34,8 @@ class ModelLoader(BaseLoader):
         # Track state
         key_to_object = {}
         created_objects = []
-        pending_fks = []
+        pending_fks = []  # For PkRef in _id fields
+        pending_fk_instances = []  # For ModelRef in FK fields
         pending_m2ms = []
 
         with transaction.atomic(), connection.constraint_checks_disabled():
@@ -47,15 +48,21 @@ class ModelLoader(BaseLoader):
                     key_to_spec,
                     key_to_temp_fk,
                     pending_fks,
+                    pending_fk_instances,
                     pending_m2ms,
                     resolver,
                 )
                 key_to_object[key] = obj
                 created_objects.append((key, obj))
 
-            # Fix FK references
+            # Fix FK ID references (PkRef in _id fields)
             for obj_key, field_name, ref_key in pending_fks:
                 setattr(key_to_object[obj_key], field_name, key_to_object[ref_key].pk)
+                key_to_object[obj_key].save()
+
+            # Fix FK instance references (ModelRef in FK fields)
+            for obj_key, field_name, ref_key in pending_fk_instances:
+                setattr(key_to_object[obj_key], field_name, key_to_object[ref_key])
                 key_to_object[obj_key].save()
 
             # Update JSON fields with resolved refs
@@ -67,16 +74,21 @@ class ModelLoader(BaseLoader):
             # Set M2M relationships
             for obj_key, field_name, ref_values in pending_m2ms:
                 m2m_manager = getattr(key_to_object[obj_key], field_name)
-                resolved_ids = []
+                resolved_values = []
                 for ref in ref_values:
-                    if isinstance(ref, Ref):
+                    if isinstance(ref, PkRef):
                         if ref.key in key_to_object:
-                            resolved_ids.append(key_to_object[ref.key].pk)
+                            resolved_values.append(key_to_object[ref.key].pk)
                         else:
-                            resolved_ids.append(resolver(ref))
+                            resolved_values.append(resolver(ref))
+                    elif isinstance(ref, ModelRef):
+                        if ref.key in key_to_object:
+                            resolved_values.append(key_to_object[ref.key])
+                        else:
+                            resolved_values.append(resolver(ref))
                     else:
-                        resolved_ids.append(ref)
-                m2m_manager.set(resolved_ids)
+                        resolved_values.append(ref)
+                m2m_manager.set(resolved_values)
 
             connection.check_constraints()
 
@@ -112,6 +124,7 @@ class ModelLoader(BaseLoader):
         key_to_spec,
         key_to_temp_fk,
         pending_fks,
+        pending_fk_instances,
         pending_m2ms,
         resolver,
     ):
@@ -148,39 +161,67 @@ class ModelLoader(BaseLoader):
                 with file_ref.open() as f:
                     obj_fields[field_name] = File(ContentFile(f.read()), file_ref.name)
 
-            elif isinstance(field_value, Ref):
+            elif isinstance(field_value, PkRef):
                 if field and isinstance(
                     field, models.ForeignKey | models.OneToOneField | ParentalKey
                 ):
-                    # Use the field name as-is if it's already _id, otherwise add _id
-                    fk_field_name = (
-                        field_name if field_name.endswith("_id") else f"{field_name}_id"
-                    )
-
-                    if field_value.key in key_to_spec:
-                        # Internal ref - use temp value, schedule for update
-                        obj_fields[fk_field_name] = key_to_temp_fk[field_value.key]
-                        pending_fks.append((key, fk_field_name, field_value.key))
+                    if field_name.endswith("_id"):
+                        # PkRef in FK ID field (e.g., author_id) - use PK value directly
+                        if field_value.key in key_to_spec:
+                            # Internal ref - use temp value, schedule for update
+                            obj_fields[field_name] = key_to_temp_fk[field_value.key]
+                            pending_fks.append((key, field_name, field_value.key))
+                        else:
+                            # External ref - resolve immediately
+                            obj_fields[field_name] = resolver(field_value)
                     else:
-                        # External ref - resolve immediately
-                        obj_fields[fk_field_name] = resolver(field_value)
+                        # PkRef in FK field (e.g., author) - Django expects model instance, not PK
+                        raise ValueError(
+                            f"PkRef not allowed in FK field {field_name}. Use ModelRef for FK fields or PkRef with {field_name}_id."
+                        )
                 else:
-                    # Ref in non-FK field (likely JSON) - skip for now
+                    # PkRef in non-FK field (likely JSON) - skip for now
+                    pass
+
+            elif isinstance(field_value, ModelRef):
+                if field and isinstance(
+                    field, models.ForeignKey | models.OneToOneField | ParentalKey
+                ):
+                    if field_name.endswith("_id"):
+                        # ModelRef in FK ID field - Django expects PK value, not instance
+                        raise ValueError(
+                            f"ModelRef not allowed in FK ID field {field_name}. Use PkRef for _id fields."
+                        )
+                    else:
+                        # ModelRef in FK field (e.g., author) - Django expects model instance
+                        if field_value.key in key_to_spec:
+                            # Internal ref - will be resolved after all objects are created
+                            pending_fk_instances.append(
+                                (key, field_name, field_value.key)
+                            )
+                            # Don't set the field now - will be set later
+                        else:
+                            # External ref - resolve immediately to model instance
+                            obj_fields[field_name] = resolver(field_value)
+                else:
+                    # ModelRef in non-FK field (likely JSON) - skip for now, will be resolved later
                     pass
 
             elif isinstance(field_value, list) and any(
-                isinstance(v, Ref) for v in field_value
+                isinstance(v, BaseRef) for v in field_value
             ):
                 if field and isinstance(
                     field, models.ManyToManyField | ParentalManyToManyField
                 ):
+                    # M2M fields accept both PkRef (for PK values) and ModelRef (for instances)
+                    # This matches Django's behavior where m2m.set() accepts both
                     pending_m2ms.append((key, field_name, field_value))
                 else:
                     # List with refs in non-M2M field (likely JSON) - skip for now
                     pass
 
             else:
-                # Regular field - but skip JSON fields with refs since Ref objects aren't JSON serializable
+                # Regular field - but skip JSON fields with refs since reference objects aren't JSON serializable
                 if (
                     field
                     and field.get_internal_type() == "JSONField"
@@ -220,8 +261,8 @@ class ModelLoader(BaseLoader):
             obj.save()
 
     def _has_refs(self, data):
-        """Check if data contains Ref objects."""
-        if isinstance(data, Ref):
+        """Check if data contains reference objects."""
+        if isinstance(data, BaseRef):
             return True
         elif isinstance(data, dict):
             return any(self._has_refs(v) for v in data.values())
@@ -230,12 +271,16 @@ class ModelLoader(BaseLoader):
         return False
 
     def _resolve_refs(self, data, key_to_object, resolver):
-        """Recursively resolve Ref objects in nested data."""
-        if isinstance(data, Ref):
+        """Recursively resolve PkRef and ModelRef objects in nested data."""
+        if isinstance(data, PkRef):
             return (
                 key_to_object[data.key].pk
                 if data.key in key_to_object
                 else resolver(data)
+            )
+        elif isinstance(data, ModelRef):
+            return (
+                key_to_object[data.key] if data.key in key_to_object else resolver(data)
             )
         elif isinstance(data, dict):
             return {

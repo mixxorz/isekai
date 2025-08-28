@@ -118,7 +118,7 @@ class Spec:
 
     def to_dict(self):
         def serialize_value(value):
-            if isinstance(value, Ref | BlobRef):
+            if isinstance(value, BaseRef):
                 return str(value)
             elif isinstance(value, dict):
                 return {k: serialize_value(v) for k, v in value.items()}
@@ -137,12 +137,14 @@ class Spec:
     def from_dict(cls, data):
         def deserialize_value(value):
             if isinstance(value, str):
-                # Try to parse as BlobRef first, then Ref
+                # Try to parse as BlobRef first, then ModelRef, then PkRef
                 try:
                     if value.startswith("isekai-blob-ref:\\"):
                         return BlobRef.from_string(value)
-                    elif value.startswith("isekai-ref:\\"):
-                        return Ref.from_string(value)
+                    elif value.startswith("isekai-model-ref:\\"):
+                        return ModelRef.from_string(value)
+                    elif value.startswith("isekai-pk-ref:\\"):
+                        return PkRef.from_string(value)
                 except ValueError:
                     pass
                 # If parsing fails or doesn't match patterns, return as string
@@ -163,21 +165,18 @@ class Spec:
 
 
 @dataclass(frozen=True, slots=True)
-class Ref:
+class BaseRef:
     """
-    Represents a reference to a resource using a Key.
-
-    Will be replaced by the resource's final primary key during Load.
+    Base class for all reference types.
     """
 
     key: Key
-
-    _prefix = "isekai-ref:\\"
+    # _prefix is defined as a class attribute in subclasses
 
     @classmethod
-    def from_string(cls, refstr: str) -> "Ref":
+    def from_string(cls, refstr: str):
         """
-        Parses a string into a Ref object.
+        Parses a string into a reference object.
         """
         if not refstr.startswith(cls._prefix):
             raise ValueError(f"Invalid ref: {refstr}")
@@ -187,13 +186,35 @@ class Ref:
 
     def __str__(self) -> str:
         """
-        Returns the string representation of the Ref.
+        Returns the string representation of the reference.
         """
         return f"{self._prefix}{self.key}"
 
 
 @dataclass(frozen=True, slots=True)
-class BlobRef(Ref):
+class PkRef(BaseRef):
+    """
+    Represents a reference to a resource using a Key.
+
+    Will be replaced by the resource's final primary key during Load.
+    """
+
+    _prefix = "isekai-pk-ref:\\"
+
+
+@dataclass(frozen=True, slots=True)
+class ModelRef(BaseRef):
+    """
+    Represents a reference to a resource using a Key.
+
+    Will be replaced by the resource's model instance during Load.
+    """
+
+    _prefix = "isekai-model-ref:\\"
+
+
+@dataclass(frozen=True, slots=True)
+class BlobRef(BaseRef):
     """
     Represents a reference to a blob resource using a Key.
 
@@ -205,14 +226,18 @@ class BlobRef(Ref):
 
 class Resolver(Protocol):
     """
-    A resolver function that takes a Ref and returns the database PK for that
-    resource, or a FileProxy if the ref is a BlobRef.
+    A resolver function that takes a ref and returns the appropriate value:
+    - BlobRef -> FileProxy
+    - PkRef -> database PK (int | str)
+    - ModelRef -> model instance
     """
 
     @overload
     def __call__(self, ref: BlobRef) -> FileProxy: ...
     @overload
-    def __call__(self, ref: Ref) -> int | str: ...
+    def __call__(self, ref: PkRef) -> int | str: ...
+    @overload
+    def __call__(self, ref: ModelRef) -> Any: ...
 
 
 @dataclass

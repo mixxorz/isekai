@@ -9,7 +9,7 @@ from wagtail.models import Site
 from isekai.contrib.wagtail.loaders import PageLoader
 from isekai.contrib.wagtail.transformers import DocumentTransformer, ImageTransformer
 from isekai.pipelines import Pipeline
-from isekai.types import BlobRef, BlobResource, InMemoryFileProxy, Key, Ref
+from isekai.types import BlobRef, BlobResource, InMemoryFileProxy, Key, PkRef
 from tests.testapp.models import ConcreteResource, ReportIndexPage, ReportPage
 
 
@@ -194,7 +194,7 @@ class TestWagtailPageLoader:
                 "date": "2023-12-31",
                 "slug": "annual-report-2023",
                 "__wagtail_parent_page": str(
-                    Ref(Key.from_string(report_index_resource.key))
+                    PkRef(Key.from_string(report_index_resource.key))
                 ),
             },
             status=ConcreteResource.Status.TRANSFORMED,
@@ -296,7 +296,9 @@ class TestWagtailPageLoader:
                 "title": "Annual Reports",
                 "intro": "<p>Yearly financial reports</p>",
                 "slug": "annual",
-                "__wagtail_parent_page": str(Ref(Key.from_string(reports_section.key))),
+                "__wagtail_parent_page": str(
+                    PkRef(Key.from_string(reports_section.key))
+                ),
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -308,7 +310,9 @@ class TestWagtailPageLoader:
                 "title": "Quarterly Reports",
                 "intro": "<p>Quarterly business updates</p>",
                 "slug": "quarterly",
-                "__wagtail_parent_page": str(Ref(Key.from_string(reports_section.key))),
+                "__wagtail_parent_page": str(
+                    PkRef(Key.from_string(reports_section.key))
+                ),
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -323,7 +327,7 @@ class TestWagtailPageLoader:
                 "body": "<p>Latest press releases and media coverage</p>",
                 "date": "2023-01-15",
                 "slug": "press-releases",
-                "__wagtail_parent_page": str(Ref(Key.from_string(news_section.key))),
+                "__wagtail_parent_page": str(PkRef(Key.from_string(news_section.key))),
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -337,7 +341,7 @@ class TestWagtailPageLoader:
                 "body": "<p>Regular updates and insights from our company</p>",
                 "date": "2023-02-01",
                 "slug": "company-blog",
-                "__wagtail_parent_page": str(Ref(Key.from_string(news_section.key))),
+                "__wagtail_parent_page": str(PkRef(Key.from_string(news_section.key))),
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -352,7 +356,9 @@ class TestWagtailPageLoader:
                 "body": "<p>Detailed financial analysis and company performance for fiscal year 2023</p>",
                 "date": "2023-12-31",
                 "slug": "annual-report-2023",
-                "__wagtail_parent_page": str(Ref(Key.from_string(annual_reports.key))),
+                "__wagtail_parent_page": str(
+                    PkRef(Key.from_string(annual_reports.key))
+                ),
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -366,7 +372,9 @@ class TestWagtailPageLoader:
                 "body": "<p>Comprehensive review of company achievements in fiscal year 2022</p>",
                 "date": "2022-12-31",
                 "slug": "annual-report-2022",
-                "__wagtail_parent_page": str(Ref(Key.from_string(annual_reports.key))),
+                "__wagtail_parent_page": str(
+                    PkRef(Key.from_string(annual_reports.key))
+                ),
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -382,7 +390,7 @@ class TestWagtailPageLoader:
                 "date": "2023-12-31",
                 "slug": "q4-2023-report",
                 "__wagtail_parent_page": str(
-                    Ref(Key.from_string(quarterly_reports.key))
+                    PkRef(Key.from_string(quarterly_reports.key))
                 ),
             },
             status=ConcreteResource.Status.TRANSFORMED,
@@ -398,7 +406,7 @@ class TestWagtailPageLoader:
                 "date": "2023-09-30",
                 "slug": "q3-2023-report",
                 "__wagtail_parent_page": str(
-                    Ref(Key.from_string(quarterly_reports.key))
+                    PkRef(Key.from_string(quarterly_reports.key))
                 ),
             },
             status=ConcreteResource.Status.TRANSFORMED,

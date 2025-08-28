@@ -15,9 +15,10 @@ from isekai.types import (
     FileProxy,
     Key,
     MinedResource,
+    ModelRef,
     OperationResult,
     PathFileProxy,
-    Ref,
+    PkRef,
     SeededResource,
     Spec,
     TextResource,
@@ -486,11 +487,13 @@ class Pipeline:
         @overload
         def resolver(ref: BlobRef) -> FileProxy: ...
         @overload
-        def resolver(ref: Ref) -> int | str: ...
+        def resolver(ref: PkRef) -> int | str: ...
+        @overload
+        def resolver(ref: ModelRef) -> Model: ...
 
-        def resolver(ref: Ref | BlobRef) -> FileProxy | int | str:
-            # If it's a Ref, we must return a primary key
-            if type(ref) is Ref:
+        def resolver(ref: PkRef | BlobRef | ModelRef) -> FileProxy | int | str | Model:
+            # If it's a PkRef, we must return a primary key
+            if type(ref) is PkRef:
                 # Try to find the object in the pool of resources currently being loaded
                 if str(ref.key) in key_to_obj:
                     return key_to_obj[str(ref.key)].pk
@@ -513,6 +516,18 @@ class Pipeline:
                 if obj := Resource.objects.filter(key=str(ref.key)).first():
                     if obj and obj.blob_data:
                         return FieldFileProxy(ff=obj.blob_data)
+
+            # If it's a ModelRef, we must return a model instance
+            elif type(ref) is ModelRef:
+                # Try to find the object in the pool of resources currently being loaded
+                if str(ref.key) in key_to_obj:
+                    return key_to_obj[str(ref.key)]
+
+                # If it's not there, then it's a reference to a resource that has
+                # already been loaded
+                if obj := Resource.objects.filter(key=str(ref.key)).first():
+                    if obj and obj.target_object:
+                        return obj.target_object
 
             # If the framework is working correctly, it is logically impossible to
             # reach this case. The build order resolver ensures that all dependency

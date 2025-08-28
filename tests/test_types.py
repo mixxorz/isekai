@@ -1,4 +1,4 @@
-from isekai.types import BlobRef, Key, Ref, Spec
+from isekai.types import BlobRef, Key, ModelRef, PkRef, Spec
 from tests.test_models import pytest
 
 
@@ -22,25 +22,39 @@ class TestKey:
 
 
 class TestRefs:
-    def test_ref(self):
+    def test_pk_ref(self):
         key = Key(type="test", value="123")
 
-        # Key to Ref
-        ref = Ref(key)
-        assert str(ref) == "isekai-ref:\\test:123"
+        # Key to PkRef
+        ref = PkRef(key)
+        assert str(ref) == "isekai-pk-ref:\\test:123"
 
-        # Ref to Key
-        ref = Ref.from_string("isekai-ref:\\test:123")
+        # PkRef to Key
+        ref = PkRef.from_string("isekai-pk-ref:\\test:123")
+        assert ref.key == key
+
+    def test_model_ref(self):
+        key = Key(type="test", value="456")
+
+        # Key to ModelRef
+        ref = ModelRef(key)
+        assert str(ref) == "isekai-model-ref:\\test:456"
+
+        # ModelRef to Key
+        ref = ModelRef.from_string("isekai-model-ref:\\test:456")
         assert ref.key == key
 
     def test_ref_invalid_string(self):
         # Invalid format should raise ValueError
         with pytest.raises(ValueError):
-            Ref.from_string("invalid-string")
+            PkRef.from_string("invalid-string")
 
         # Invalid prefix should raise ValueError
         with pytest.raises(ValueError):
-            Ref.from_string("ref:\\test:123")
+            PkRef.from_string("ref:\\test:123")
+
+        with pytest.raises(ValueError):
+            ModelRef.from_string("invalid-string")
 
     def test_blob_ref(self):
         key = Key(type="blob", value="456")
@@ -73,9 +87,9 @@ class TestSpec:
                     Key(type="url", value="https://example.com/image.png")
                 ),
                 "description": "A sample description",
-                "call_to_action": Ref(Key(type="gen", value="call_to_action_123")),
+                "call_to_action": PkRef(Key(type="gen", value="call_to_action_123")),
                 "child_object": {
-                    "pk": Ref(Key(type="gen", value="child_object_456")),
+                    "pk": PkRef(Key(type="gen", value="child_object_456")),
                     "name": "Child Object Name",
                 },
             },
@@ -87,9 +101,9 @@ class TestSpec:
                 "title": "Test Title",
                 "image": "isekai-blob-ref:\\url:https://example.com/image.png",
                 "description": "A sample description",
-                "call_to_action": "isekai-ref:\\gen:call_to_action_123",
+                "call_to_action": "isekai-pk-ref:\\gen:call_to_action_123",
                 "child_object": {
-                    "pk": "isekai-ref:\\gen:child_object_456",
+                    "pk": "isekai-pk-ref:\\gen:child_object_456",
                     "name": "Child Object Name",
                 },
             },
@@ -106,13 +120,13 @@ class TestSpec:
                     BlobRef(Key(type="file", value="image2.jpg")),
                 ],
                 "references": [
-                    Ref(Key(type="gen", value="ref1")),
-                    Ref(Key(type="gen", value="ref2")),
+                    PkRef(Key(type="gen", value="ref1")),
+                    PkRef(Key(type="gen", value="ref2")),
                 ],
                 "mixed_list": [
                     "string_value",
                     42,
-                    Ref(Key(type="gen", value="mixed_ref")),
+                    PkRef(Key(type="gen", value="mixed_ref")),
                     {"nested_ref": BlobRef(Key(type="url", value="nested.png"))},
                 ],
             },
@@ -126,13 +140,13 @@ class TestSpec:
                     "isekai-blob-ref:\\file:image2.jpg",
                 ],
                 "references": [
-                    "isekai-ref:\\gen:ref1",
-                    "isekai-ref:\\gen:ref2",
+                    "isekai-pk-ref:\\gen:ref1",
+                    "isekai-pk-ref:\\gen:ref2",
                 ],
                 "mixed_list": [
                     "string_value",
                     42,
-                    "isekai-ref:\\gen:mixed_ref",
+                    "isekai-pk-ref:\\gen:mixed_ref",
                     {"nested_ref": "isekai-blob-ref:\\url:nested.png"},
                 ],
             },
@@ -145,7 +159,7 @@ class TestSpec:
             content_type="foo.TupleContainer",
             attributes={
                 "tuple_refs": (
-                    Ref(Key(type="gen", value="tuple_ref1")),
+                    PkRef(Key(type="gen", value="tuple_ref1")),
                     BlobRef(Key(type="file", value="tuple_blob.jpg")),
                     "tuple_string",
                 ),
@@ -156,7 +170,7 @@ class TestSpec:
             "content_type": "foo.TupleContainer",
             "attributes": {
                 "tuple_refs": [
-                    "isekai-ref:\\gen:tuple_ref1",
+                    "isekai-pk-ref:\\gen:tuple_ref1",
                     "isekai-blob-ref:\\file:tuple_blob.jpg",
                     "tuple_string",
                 ],
@@ -172,11 +186,11 @@ class TestSpec:
                 "level1": {
                     "level2": {
                         "level3": {
-                            "deep_ref": Ref(Key(type="deep", value="nested_value")),
+                            "deep_ref": PkRef(Key(type="deep", value="nested_value")),
                             "deep_list": [
                                 BlobRef(Key(type="nested", value="deep_blob.png")),
                                 {
-                                    "even_deeper": Ref(
+                                    "even_deeper": PkRef(
                                         Key(type="deepest", value="bottom")
                                     )
                                 },
@@ -193,10 +207,10 @@ class TestSpec:
                 "level1": {
                     "level2": {
                         "level3": {
-                            "deep_ref": "isekai-ref:\\deep:nested_value",
+                            "deep_ref": "isekai-pk-ref:\\deep:nested_value",
                             "deep_list": [
                                 "isekai-blob-ref:\\nested:deep_blob.png",
-                                {"even_deeper": "isekai-ref:\\deepest:bottom"},
+                                {"even_deeper": "isekai-pk-ref:\\deepest:bottom"},
                             ],
                         },
                     },
@@ -224,12 +238,12 @@ class TestSpec:
             content_type="foo.WithNone",
             attributes={
                 "none_value": None,
-                "ref_with_none": Ref(Key(type="gen", value="has_none")),
+                "ref_with_none": PkRef(Key(type="gen", value="has_none")),
                 "dict_with_none": {
                     "inner_none": None,
                     "inner_ref": BlobRef(Key(type="file", value="none_test.jpg")),
                 },
-                "list_with_none": [None, Ref(Key(type="gen", value="in_list"))],
+                "list_with_none": [None, PkRef(Key(type="gen", value="in_list"))],
             },
         )
 
@@ -237,12 +251,12 @@ class TestSpec:
             "content_type": "foo.WithNone",
             "attributes": {
                 "none_value": None,
-                "ref_with_none": "isekai-ref:\\gen:has_none",
+                "ref_with_none": "isekai-pk-ref:\\gen:has_none",
                 "dict_with_none": {
                     "inner_none": None,
                     "inner_ref": "isekai-blob-ref:\\file:none_test.jpg",
                 },
-                "list_with_none": [None, "isekai-ref:\\gen:in_list"],
+                "list_with_none": [None, "isekai-pk-ref:\\gen:in_list"],
             },
         }
 
@@ -255,9 +269,9 @@ class TestSpec:
                 "title": "Test Title",
                 "image": "isekai-blob-ref:\\url:https://example.com/image.png",
                 "description": "A sample description",
-                "call_to_action": "isekai-ref:\\gen:call_to_action_123",
+                "call_to_action": "isekai-pk-ref:\\gen:call_to_action_123",
                 "child_object": {
-                    "pk": "isekai-ref:\\gen:child_object_456",
+                    "pk": "isekai-pk-ref:\\gen:child_object_456",
                     "name": "Child Object Name",
                 },
             },
@@ -273,9 +287,9 @@ class TestSpec:
                     Key(type="url", value="https://example.com/image.png")
                 ),
                 "description": "A sample description",
-                "call_to_action": Ref(Key(type="gen", value="call_to_action_123")),
+                "call_to_action": PkRef(Key(type="gen", value="call_to_action_123")),
                 "child_object": {
-                    "pk": Ref(Key(type="gen", value="child_object_456")),
+                    "pk": PkRef(Key(type="gen", value="child_object_456")),
                     "name": "Child Object Name",
                 },
             },
@@ -292,13 +306,13 @@ class TestSpec:
                     "isekai-blob-ref:\\file:image2.jpg",
                 ],
                 "references": [
-                    "isekai-ref:\\gen:ref1",
-                    "isekai-ref:\\gen:ref2",
+                    "isekai-pk-ref:\\gen:ref1",
+                    "isekai-pk-ref:\\gen:ref2",
                 ],
                 "mixed_list": [
                     "string_value",
                     42,
-                    "isekai-ref:\\gen:mixed_ref",
+                    "isekai-pk-ref:\\gen:mixed_ref",
                     {"nested_ref": "isekai-blob-ref:\\url:nested.png"},
                 ],
             },
@@ -314,13 +328,13 @@ class TestSpec:
                     BlobRef(Key(type="file", value="image2.jpg")),
                 ],
                 "references": [
-                    Ref(Key(type="gen", value="ref1")),
-                    Ref(Key(type="gen", value="ref2")),
+                    PkRef(Key(type="gen", value="ref1")),
+                    PkRef(Key(type="gen", value="ref2")),
                 ],
                 "mixed_list": [
                     "string_value",
                     42,
-                    Ref(Key(type="gen", value="mixed_ref")),
+                    PkRef(Key(type="gen", value="mixed_ref")),
                     {"nested_ref": BlobRef(Key(type="url", value="nested.png"))},
                 ],
             },
@@ -335,10 +349,10 @@ class TestSpec:
                 "level1": {
                     "level2": {
                         "level3": {
-                            "deep_ref": "isekai-ref:\\deep:nested_value",
+                            "deep_ref": "isekai-pk-ref:\\deep:nested_value",
                             "deep_list": [
                                 "isekai-blob-ref:\\nested:deep_blob.png",
-                                {"even_deeper": "isekai-ref:\\deepest:bottom"},
+                                {"even_deeper": "isekai-pk-ref:\\deepest:bottom"},
                             ],
                         },
                     },
@@ -354,11 +368,11 @@ class TestSpec:
                 "level1": {
                     "level2": {
                         "level3": {
-                            "deep_ref": Ref(Key(type="deep", value="nested_value")),
+                            "deep_ref": PkRef(Key(type="deep", value="nested_value")),
                             "deep_list": [
                                 BlobRef(Key(type="nested", value="deep_blob.png")),
                                 {
-                                    "even_deeper": Ref(
+                                    "even_deeper": PkRef(
                                         Key(type="deepest", value="bottom")
                                     )
                                 },
@@ -391,12 +405,12 @@ class TestSpec:
             "content_type": "foo.WithNone",
             "attributes": {
                 "none_value": None,
-                "ref_with_none": "isekai-ref:\\gen:has_none",
+                "ref_with_none": "isekai-pk-ref:\\gen:has_none",
                 "dict_with_none": {
                     "inner_none": None,
                     "inner_ref": "isekai-blob-ref:\\file:none_test.jpg",
                 },
-                "list_with_none": [None, "isekai-ref:\\gen:in_list"],
+                "list_with_none": [None, "isekai-pk-ref:\\gen:in_list"],
             },
         }
 
@@ -406,12 +420,12 @@ class TestSpec:
             content_type="foo.WithNone",
             attributes={
                 "none_value": None,
-                "ref_with_none": Ref(Key(type="gen", value="has_none")),
+                "ref_with_none": PkRef(Key(type="gen", value="has_none")),
                 "dict_with_none": {
                     "inner_none": None,
                     "inner_ref": BlobRef(Key(type="file", value="none_test.jpg")),
                 },
-                "list_with_none": [None, Ref(Key(type="gen", value="in_list"))],
+                "list_with_none": [None, PkRef(Key(type="gen", value="in_list"))],
             },
         )
 
@@ -444,11 +458,11 @@ class TestSpec:
                 "title": "Roundtrip Test",
                 "image": BlobRef(Key(type="url", value="https://example.com/test.jpg")),
                 "refs": [
-                    Ref(Key(type="gen", value="ref1")),
-                    Ref(Key(type="gen", value="ref2")),
+                    PkRef(Key(type="gen", value="ref1")),
+                    PkRef(Key(type="gen", value="ref2")),
                 ],
                 "nested": {
-                    "deep_ref": Ref(Key(type="deep", value="nested")),
+                    "deep_ref": PkRef(Key(type="deep", value="nested")),
                     "values": [
                         1,
                         2,

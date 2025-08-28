@@ -9,7 +9,15 @@ from wagtail.images.models import Image
 
 from isekai.loaders import ModelLoader
 from isekai.pipelines import get_django_pipeline
-from isekai.types import BlobRef, FileProxy, InMemoryFileProxy, Key, Ref, Spec
+from isekai.types import (
+    BlobRef,
+    FileProxy,
+    InMemoryFileProxy,
+    Key,
+    ModelRef,
+    PkRef,
+    Spec,
+)
 from tests.testapp.models import Article, Author, AuthorProfile, ConcreteResource, Tag
 
 
@@ -20,9 +28,9 @@ class TestModelLoader:
         @overload
         def resolver(ref: BlobRef) -> FileProxy: ...
         @overload
-        def resolver(ref: Ref) -> int | str: ...
+        def resolver(ref: PkRef) -> int | str: ...
 
-        def resolver(ref: Ref) -> FileProxy | int | str:
+        def resolver(ref: PkRef) -> FileProxy | int | str:
             with open("tests/files/blue_square.jpg", "rb") as f:
                 return InMemoryFileProxy(f.read())
             raise AssertionError(f"Unexpected ref: {ref}")
@@ -57,9 +65,9 @@ class TestModelLoader:
         @overload
         def resolver(ref: BlobRef) -> FileProxy: ...
         @overload
-        def resolver(ref: Ref) -> int | str: ...
+        def resolver(ref: PkRef) -> int | str: ...
 
-        def resolver(ref: Ref) -> FileProxy | int | str:
+        def resolver(ref: PkRef) -> FileProxy | int | str:
             text_content = b"This is a sample document for testing."
             return InMemoryFileProxy(text_content)
             raise AssertionError(f"Unexpected ref: {ref}")
@@ -141,7 +149,7 @@ class TestModelLoader:
             attributes={
                 "title": "Test Article",
                 "content": "This is a test article.",
-                "author": Ref(author_key),
+                "author_id": PkRef(author_key),
             },
         )
 
@@ -203,10 +211,10 @@ class TestModelLoader:
             attributes={
                 "title": "Python and Django Best Practices",
                 "content": "Here are some best practices...",
-                "author": Ref(author_key),
+                "author_id": PkRef(author_key),
                 "tags": [
-                    Ref(tag1_key),
-                    Ref(tag2_key),
+                    PkRef(tag1_key),
+                    PkRef(tag2_key),
                 ],
             },
         )
@@ -237,6 +245,143 @@ class TestModelLoader:
         tag_names = {tag.name for tag in article_tags}
         assert tag_names == {"Python", "Django"}
 
+    def test_load_with_m2m_modelref(self):
+        """Test loading M2M relationships with ModelRef (instances)."""
+
+        def resolver(ref):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
+
+        loader = ModelLoader()
+
+        # Create author spec
+        author_key = Key(type="author", value="m2m_modelref_author")
+        author_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "M2M ModelRef Author",
+                "email": "m2m_modelref@example.com",
+            },
+        )
+
+        # Create tag specs
+        tag1_key = Key(type="tag", value="modelref_tag1")
+        tag1_spec = Spec(
+            content_type="testapp.Tag",
+            attributes={"name": "ModelRef Tag 1"},
+        )
+
+        tag2_key = Key(type="tag", value="modelref_tag2")
+        tag2_spec = Spec(
+            content_type="testapp.Tag",
+            attributes={"name": "ModelRef Tag 2"},
+        )
+
+        # Create article spec with M2M relationships using ModelRef
+        article_key = Key(type="article", value="modelref_m2m_article")
+        article_spec = Spec(
+            content_type="testapp.Article",
+            attributes={
+                "title": "Article with ModelRef M2M",
+                "content": "Testing ModelRef in M2M relationships.",
+                "author_id": PkRef(author_key),
+                "tags": [
+                    ModelRef(tag1_key),  # ModelRef in M2M - should work now!
+                    ModelRef(tag2_key),  # ModelRef in M2M - should work now!
+                ],
+            },
+        )
+
+        objects = loader.load(
+            [
+                (tag1_key, tag1_spec),
+                (tag2_key, tag2_spec),
+                (author_key, author_spec),
+                (article_key, article_spec),
+            ],
+            resolver,
+        )
+
+        assert len(objects) == 4
+
+        # Find objects in results
+        tags = [obj[1] for obj in objects if isinstance(obj[1], Tag)]
+        author = next(obj[1] for obj in objects if isinstance(obj[1], Author))
+        article = next(obj[1] for obj in objects if isinstance(obj[1], Article))
+
+        assert len(tags) == 2
+        assert article.author == author
+
+        # Check M2M relationships - should work with ModelRef too
+        article_tags = list(article.tags.all())
+        assert len(article_tags) == 2
+        tag_names = {tag.name for tag in article_tags}
+        assert tag_names == {"ModelRef Tag 1", "ModelRef Tag 2"}
+
+    def test_load_with_mixed_pkref_modelref_m2m(self):
+        """Test loading M2M relationships with mixed PkRef and ModelRef."""
+
+        def resolver(ref):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
+
+        loader = ModelLoader()
+
+        # Create author spec
+        author_key = Key(type="author", value="mixed_m2m_author")
+        author_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "Mixed M2M Author",
+                "email": "mixed_m2m@example.com",
+            },
+        )
+
+        # Create tag specs
+        tag1_key = Key(type="tag", value="mixed_tag1")
+        tag1_spec = Spec(
+            content_type="testapp.Tag",
+            attributes={"name": "Mixed Tag 1"},
+        )
+
+        tag2_key = Key(type="tag", value="mixed_tag2")
+        tag2_spec = Spec(
+            content_type="testapp.Tag",
+            attributes={"name": "Mixed Tag 2"},
+        )
+
+        # Create article spec with mixed PkRef/ModelRef in M2M
+        article_key = Key(type="article", value="mixed_m2m_article")
+        article_spec = Spec(
+            content_type="testapp.Article",
+            attributes={
+                "title": "Article with Mixed M2M References",
+                "content": "Testing mixed PkRef and ModelRef in M2M.",
+                "author_id": PkRef(author_key),
+                "tags": [
+                    PkRef(tag1_key),  # PkRef in M2M (resolves to PK)
+                    ModelRef(tag2_key),  # ModelRef in M2M (resolves to instance)
+                ],
+            },
+        )
+
+        objects = loader.load(
+            [
+                (tag1_key, tag1_spec),
+                (tag2_key, tag2_spec),
+                (author_key, author_spec),
+                (article_key, article_spec),
+            ],
+            resolver,
+        )
+
+        assert len(objects) == 4
+
+        # Check M2M relationships - should work with both types
+        article = next(obj[1] for obj in objects if isinstance(obj[1], Article))
+        article_tags = list(article.tags.all())
+        assert len(article_tags) == 2
+        tag_names = {tag.name for tag in article_tags}
+        assert tag_names == {"Mixed Tag 1", "Mixed Tag 2"}
+
     def test_load_with_json_field_references(self):
         """Test loading models with references in JSON fields."""
 
@@ -265,7 +410,7 @@ class TestModelLoader:
                 "bio": {
                     "description": "Experienced writer",
                     "favorite_topics": ["Python", "Django"],
-                    "mentor": Ref(mentor_key),
+                    "mentor": PkRef(mentor_key),
                 },
             },
         )
@@ -314,7 +459,7 @@ class TestModelLoader:
             attributes={
                 "title": "Article with External Author",
                 "content": "This article references an existing author.",
-                "author": Ref(Key(type="author", value="existing_author")),
+                "author_id": PkRef(Key(type="author", value="existing_author")),
             },
         )
 
@@ -345,7 +490,7 @@ class TestModelLoader:
                 "name": "Circular Author",
                 "email": "circular@example.com",
                 "bio": {
-                    "featured_article": Ref(
+                    "featured_article": PkRef(
                         article_key
                     ),  # Author references article in JSON
                 },
@@ -357,7 +502,7 @@ class TestModelLoader:
             attributes={
                 "title": "Circular Article",
                 "content": "This article references its author.",
-                "author": Ref(author_key),  # Article references author via FK
+                "author_id": PkRef(author_key),  # Article references author via FK
             },
         )
 
@@ -401,7 +546,7 @@ class TestModelLoader:
                 "name": "Student Author",
                 "email": "student@example.com",
                 "bio": {
-                    "mentor": Ref(mentor_key),  # Self-reference via JSON field
+                    "mentor": PkRef(mentor_key),  # Self-reference via JSON field
                 },
             },
         )
@@ -465,10 +610,10 @@ class TestModelLoader:
             attributes={
                 "title": "Mixed M2M Article",
                 "content": "This article has mixed tag references.",
-                "author": Ref(author_key),
+                "author_id": PkRef(author_key),
                 "tags": [
-                    Ref(new_tag_key),  # Internal reference to new tag
-                    Ref(
+                    PkRef(new_tag_key),  # Internal reference to new tag
+                    PkRef(
                         Key(type="tag", value="existing_tag")
                     ),  # External reference to existing tag
                 ],
@@ -519,7 +664,7 @@ class TestModelLoader:
             attributes={
                 "title": "Empty Article",
                 "content": "This article has empty relationships.",
-                "author": Ref(author_key),
+                "author_id": PkRef(author_key),
                 # Note: Empty M2M list [] would be handled by M2M phase, not included here
                 "metadata": None,  # Explicit null value
             },
@@ -561,7 +706,7 @@ class TestModelLoader:
         profile_spec = Spec(
             content_type="testapp.AuthorProfile",
             attributes={
-                "author": Ref(author_key),  # OneToOne reference
+                "author_id": PkRef(author_key),  # OneToOne reference
                 "website": "https://example.com",
                 "twitter_handle": "@profile_author",
                 "settings": {"theme": "dark", "notifications": True},
@@ -602,7 +747,7 @@ class TestModelLoader:
         profile_spec = Spec(
             content_type="testapp.AuthorProfile",
             attributes={
-                "author": Ref(Key(type="author", value="existing_oto_author")),
+                "author_id": PkRef(Key(type="author", value="existing_oto_author")),
                 "website": "https://external.example.com",
                 "settings": {"external": True},
             },
@@ -649,10 +794,10 @@ class TestModelLoader:
         profile_spec = Spec(
             content_type="testapp.AuthorProfile",
             attributes={
-                "author": Ref(author1_key),
+                "author_id": PkRef(author1_key),
                 "website": "https://jsontest.example.com",
                 "settings": {
-                    "preferred_collaborator": Ref(author2_key),  # Ref in JSON
+                    "preferred_collaborator": PkRef(author2_key),  # Ref in JSON
                     "theme": "light",
                 },
             },
@@ -712,7 +857,7 @@ class TestModelLoader:
             attributes={
                 "title": "ID Field Article",
                 "content": "This article uses author_id field.",
-                "author_id": Ref(author_key),  # Using _id suffix
+                "author_id": PkRef(author_key),  # Using _id suffix
             },
         )
 
@@ -753,7 +898,7 @@ class TestModelLoader:
         profile_spec = Spec(
             content_type="testapp.AuthorProfile",
             attributes={
-                "author_id": Ref(author_key),  # Using _id suffix for OneToOne
+                "author_id": PkRef(author_key),  # Using _id suffix for OneToOne
                 "website": "https://otoid.example.com",
                 "settings": {"test": True},
             },
@@ -844,7 +989,7 @@ class TestLoad:
             target_spec={
                 "title": "Test Article",
                 "content": "This is a test article.",
-                "author": str(Ref(Key.from_string(author_resource.key))),
+                "author_id": str(PkRef(Key.from_string(author_resource.key))),
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -892,7 +1037,7 @@ class TestLoad:
             target_spec={
                 "name": "Jane Doe",
                 "email": "jane@example.com",
-                "bio": {"featured_articles": [str(Ref(article_key))]},
+                "bio": {"featured_articles": [str(PkRef(article_key))]},
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -908,7 +1053,7 @@ class TestLoad:
             target_spec={
                 "title": "Test Article",
                 "content": "This is a test article.",
-                "author": str(Ref(Key.from_string(author_resource.key))),
+                "author_id": str(PkRef(Key.from_string(author_resource.key))),
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -982,7 +1127,7 @@ class TestLoad:
             target_spec={
                 "title": "Test Article",
                 "content": "This is a test article.",
-                "author": str(Ref(Key.from_string(author_resource.key))),
+                "author_id": str(PkRef(Key.from_string(author_resource.key))),
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -1062,7 +1207,7 @@ class TestLoad:
             target_spec={
                 "name": "Circular Author",
                 "email": "circular@example.com",
-                "bio": {"featured_article": str(Ref(circular_article_key))},
+                "bio": {"featured_article": str(PkRef(circular_article_key))},
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -1079,9 +1224,9 @@ class TestLoad:
             target_spec={
                 "title": "Circular Article",
                 "content": "This article has circular dependencies.",
-                "author": str(Ref(circular_author_key)),
+                "author_id": str(PkRef(circular_author_key)),
                 "tags": [
-                    str(Ref(independent_tag_key))
+                    str(PkRef(independent_tag_key))
                 ],  # Reference independent resource
             },
             status=ConcreteResource.Status.TRANSFORMED,
@@ -1119,9 +1264,9 @@ class TestLoad:
             target_spec={
                 "title": "Chain Article",
                 "content": "This article is part of a dependency chain.",
-                "author": str(Ref(chain_author_key)),
+                "author_id": str(PkRef(chain_author_key)),
                 "tags": [
-                    str(Ref(independent_tag_key))
+                    str(PkRef(independent_tag_key))
                 ],  # Cross-reference to independent
             },
             status=ConcreteResource.Status.TRANSFORMED,
@@ -1137,11 +1282,11 @@ class TestLoad:
                 app_label="testapp", model="authorprofile"
             ),
             target_spec={
-                "author": str(Ref(chain_author_key)),
+                "author_id": str(PkRef(chain_author_key)),
                 "website": "https://chain.example.com",
                 "settings": {
-                    "featured_article": str(Ref(chain_article_key)),
-                    "collaborator": str(Ref(independent_author_key)),
+                    "featured_article": str(PkRef(chain_article_key)),
+                    "collaborator": str(PkRef(independent_author_key)),
                 },
             },
             status=ConcreteResource.Status.TRANSFORMED,
@@ -1216,7 +1361,7 @@ class TestLoad:
             target_spec={
                 "title": "Article with Missing Author",
                 "content": "This article references a non-existent author.",
-                "author": str(Ref(Key(type="author", value="nonexistent_author"))),
+                "author_id": str(PkRef(Key(type="author", value="nonexistent_author"))),
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -1311,7 +1456,7 @@ class TestLoad:
             target_spec={
                 "title": "Dependent Article",
                 "content": "This article depends on the failing author.",
-                "author": str(Ref(author_key)),
+                "author_id": str(PkRef(author_key)),
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -1388,6 +1533,68 @@ class TestLoad:
         assert resource.status == ConcreteResource.Status.LOADED
         assert resource.loaded_at == now
         assert resource.target_object == image
+
+    def test_load_with_model_ref(self):
+        """Test loading resources with ModelRef (foreign key relationships) works correctly."""
+        # Create author first
+        author_key = Key(type="author", value="test_author")
+        author_resource = ConcreteResource.objects.create(
+            key=str(author_key),
+            mime_type="application/json",
+            data_type="text",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="author"
+            ),
+            target_spec={
+                "name": "John Doe",
+                "email": "john@example.com",
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        # Create article that references the author with ModelRef
+        article_key = Key(type="article", value="test_article")
+        article_resource = ConcreteResource.objects.create(
+            key=str(article_key),
+            mime_type="application/json",
+            data_type="text",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="article"
+            ),
+            target_spec={
+                "title": "Test Article with ModelRef",
+                "content": "Article content here",
+                "author": str(ModelRef(author_key)),  # Using ModelRef for FK field
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        now = timezone.now()
+        with freeze_time(now):
+            pipeline = get_django_pipeline()
+            pipeline.load()
+
+        # Verify both objects were created correctly
+        author = Author.objects.get()
+        assert author.name == "John Doe"
+        assert author.email == "john@example.com"
+
+        article = Article.objects.get()
+        assert article.title == "Test Article with ModelRef"
+        assert article.content == "Article content here"
+        assert article.author == author  # ModelRef resolved to author instance
+
+        # Verify resources are marked as loaded
+        author_resource.refresh_from_db()
+        article_resource.refresh_from_db()
+        assert author_resource.status == ConcreteResource.Status.LOADED
+        assert article_resource.status == ConcreteResource.Status.LOADED
+        assert author_resource.loaded_at == now
+        assert article_resource.loaded_at == now
+        assert author_resource.target_object == author
+        assert article_resource.target_object == article
 
     def test_load_is_idempotent(self):
         """Test that running load multiple times doesn't re-load already loaded resources."""

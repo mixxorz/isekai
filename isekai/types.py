@@ -3,10 +3,10 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Any, Literal, Protocol, overload
+from typing import IO, TYPE_CHECKING, Any, ClassVar, Literal, Protocol, overload
 
 if TYPE_CHECKING:
-    from django.db.models import FieldFile
+    from django.db.models import FieldFile, Model
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,7 +171,7 @@ class BaseRef:
     """
 
     key: Key
-    # _prefix is defined as a class attribute in subclasses
+    _prefix: ClassVar[str]  # Must be overridden in subclasses
 
     @classmethod
     def from_string(cls, refstr: str):
@@ -237,7 +237,7 @@ class Resolver(Protocol):
     @overload
     def __call__(self, ref: PkRef) -> int | str: ...
     @overload
-    def __call__(self, ref: ModelRef) -> Any: ...
+    def __call__(self, ref: ModelRef) -> "Model": ...
 
 
 @dataclass

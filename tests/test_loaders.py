@@ -3,6 +3,7 @@ from typing import overload
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
+from django.db.models import Model
 from django.utils import timezone
 from freezegun import freeze_time
 from wagtail.images.models import Image
@@ -29,10 +30,13 @@ class TestModelLoader:
         def resolver(ref: BlobRef) -> FileProxy: ...
         @overload
         def resolver(ref: PkRef) -> int | str: ...
+        @overload
+        def resolver(ref: ModelRef) -> Model: ...
 
-        def resolver(ref: PkRef) -> FileProxy | int | str:
-            with open("tests/files/blue_square.jpg", "rb") as f:
-                return InMemoryFileProxy(f.read())
+        def resolver(ref: PkRef | BlobRef | ModelRef) -> FileProxy | int | str | Model:
+            if isinstance(ref, BlobRef):
+                with open("tests/files/blue_square.jpg", "rb") as f:
+                    return InMemoryFileProxy(f.read())
             raise AssertionError(f"Unexpected ref: {ref}")
 
         loader = ModelLoader()
@@ -66,10 +70,13 @@ class TestModelLoader:
         def resolver(ref: BlobRef) -> FileProxy: ...
         @overload
         def resolver(ref: PkRef) -> int | str: ...
+        @overload
+        def resolver(ref: ModelRef) -> Model: ...
 
-        def resolver(ref: PkRef) -> FileProxy | int | str:
-            text_content = b"This is a sample document for testing."
-            return InMemoryFileProxy(text_content)
+        def resolver(ref: PkRef | BlobRef | ModelRef) -> FileProxy | int | str | Model:
+            if isinstance(ref, BlobRef):
+                text_content = b"This is a sample document for testing."
+                return InMemoryFileProxy(text_content)
             raise AssertionError(f"Unexpected ref: {ref}")
 
         loader = ModelLoader()

@@ -1577,6 +1577,7 @@ class TestLoad:
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
+        article_resource.dependencies.add(author_resource)
 
         now = timezone.now()
         with freeze_time(now):

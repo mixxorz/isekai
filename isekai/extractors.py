@@ -1,6 +1,7 @@
 import mimetypes
 import re
 import tempfile
+import time
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -23,6 +24,16 @@ class BaseExtractor:
 
 
 class HTTPExtractor(BaseExtractor):
+    def __init__(
+        self,
+        max_retries: int = 3,
+        max_delay: float = 60.0,
+        timeout: int = 30,
+    ):
+        self.max_retries = max_retries
+        self.max_delay = max_delay
+        self.timeout = timeout
+
     def extract(self, key: Key) -> TextResource | BlobResource | None:
         # We only handle keys of type "url"
         if key.type != "url":
@@ -30,7 +41,7 @@ class HTTPExtractor(BaseExtractor):
 
         url = key.value
 
-        response = requests.get(url)
+        response = self._make_request_with_backoff(url)
 
         content_type = response.headers.get("Content-Type", "application/octet-stream")
         mime_type = content_type.split(";")[0]
@@ -56,6 +67,28 @@ class HTTPExtractor(BaseExtractor):
                 file_ref=PathFileProxy(path=Path(temp_file.name)),
                 metadata=metadata,
             )
+
+    def _make_request_with_backoff(self, url: str) -> requests.Response:
+        """Make HTTP request with exponential backoff retry logic."""
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = requests.get(url, timeout=self.timeout)
+                response.raise_for_status()
+                return response
+            except (
+                requests.exceptions.RequestException,
+                requests.exceptions.HTTPError,
+            ) as e:
+                if attempt < self.max_retries:
+                    delay = min(2**attempt, self.max_delay)
+                    time.sleep(delay)
+                    continue
+
+                # Last attempt failed, re-raise the exception
+                raise e
+
+        # This is mostly for type checkers; we should never reach here
+        raise RuntimeError("Unreachable code reached in _make_request_with_backoff")
 
     def _detect_data_type(self, content_type: str) -> Literal["text", "blob"]:
         # Check if it's a text MIME type

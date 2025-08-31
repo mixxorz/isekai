@@ -108,7 +108,6 @@ class BlobResource:
 class MinedResource:
     key: Key
     metadata: Mapping[str, Any]
-    is_dependency: bool = True
 
 
 @dataclass(frozen=True, slots=True)

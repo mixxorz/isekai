@@ -299,11 +299,6 @@ class Pipeline:
                 Resource.objects.bulk_create(new_resources, ignore_conflicts=True)
 
                 # Update the original resource that was mined
-                # Only set dependencies for resources marked as dependencies
-                dependency_key_strings = [
-                    str(mr.key) for mr in mined_resources if mr.is_dependency
-                ]
-                resource.dependencies.set(dependency_key_strings)  # type: ignore[call-arg]
                 resource.transition_to(Resource.Status.MINED)
                 resource.save()
 
@@ -399,7 +394,26 @@ class Pipeline:
                     resource.target_content_type_id = content_type
                     resource.target_spec = spec_dict["attributes"]
 
+                    # Set dependencies based on refs found in the spec
+                    refs = spec.find_refs()
+                    dependency_key_strings = [str(ref.key) for ref in refs]
+
+                    # Check if all referenced resources exist
+                    if dependency_key_strings:
+                        existing_keys = set(
+                            Resource.objects.filter(
+                                key__in=dependency_key_strings
+                            ).values_list("key", flat=True)
+                        )
+                        missing_keys = set(dependency_key_strings) - existing_keys
+                        if missing_keys:
+                            raise TransformError("Invalid refs found in spec")
+
                     resource.transition_to(Resource.Status.TRANSFORMED)
+
+                    with transaction.atomic():
+                        resource.save()
+                        resource.dependencies.set(dependency_key_strings)  # type: ignore[call-arg]
 
                     logger.info(f"Successfully transformed: {resource.key}")
                 else:
@@ -407,21 +421,10 @@ class Pipeline:
 
             except Exception as e:
                 resource.last_error = f"{e.__class__.__name__}: {str(e)}"
+                resource.save()
 
                 logger.error(f"Failed to transform {resource.key}: {e}")
 
-        logger.info("Saving changes to database...")
-
-        Resource.objects.bulk_update(
-            resources,
-            [
-                "target_content_type_id",
-                "target_spec",
-                "status",
-                "transformed_at",
-                "last_error",
-            ],
-        )
         transformed_count = sum(
             1 for r in resources if r.status == Resource.Status.TRANSFORMED
         )

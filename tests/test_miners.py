@@ -2,9 +2,9 @@ import pytest
 from django.utils import timezone
 from freezegun import freeze_time
 
-from isekai.miners import BaseMiner, HTMLDocumentMiner, HTMLImageMiner, HTMLPageMiner
-from isekai.pipelines import Pipeline, get_django_pipeline
-from isekai.types import Key, MinedResource, TextResource
+from isekai.miners import HTMLDocumentMiner, HTMLImageMiner, HTMLPageMiner
+from isekai.pipelines import get_django_pipeline
+from isekai.types import Key, TextResource
 from tests.testapp.models import ConcreteResource
 
 
@@ -387,10 +387,6 @@ class TestMine:
 
         # Check original resource is updated
         original_resource.refresh_from_db()
-        assert set(original_resource.dependencies.values_list("pk", flat=True)) == set(
-            resources.values_list("pk", flat=True)
-        ), "Dependencies should match mined resources"
-
         assert original_resource.status == ConcreteResource.Status.MINED
         assert original_resource.mined_at == now
 
@@ -452,10 +448,9 @@ class TestMine:
         )
         assert cat_resources.count() == 1
 
-        # Both original resources should reference the same cat image
+        # The shared image exists only once in the database
         cat_resource = cat_resources.first()
-        assert cat_resource in resource_1.dependencies.all()
-        assert cat_resource in resource_2.dependencies.all()
+        assert cat_resource is not None
 
         # Second mine operation - should not create duplicates
         pipeline = get_django_pipeline()
@@ -909,60 +904,6 @@ class TestHTMLPageMiner:
                 f"Link text mismatch for {url}"
             )
 
-    def test_miner_dependency_hierarchy_logic(self):
-        """Test that HTMLPageMiner marks dependencies based on URL hierarchy."""
-        miner = HTMLPageMiner(allowed_domains=["*"])
-
-        key = Key(type="url", value="https://example.com/about/team/")
-        text_data = """
-        <html>
-        <body>
-          <nav>
-            <!-- Higher in hierarchy - should be dependency -->
-            <a href="/">Home</a>
-            <a href="/about/">About Section</a>
-
-            <!-- Same level - should be dependency -->
-            <a href="/about/history/">History</a>
-
-            <!-- Lower in hierarchy - should NOT be dependency -->
-            <a href="/about/team/members/">Team Members</a>
-            <a href="/about/team/management/">Management</a>
-
-            <!-- Different branch - should be dependency -->
-            <a href="/services/">Services</a>
-            <a href="/contact/">Contact</a>
-          </nav>
-        </body>
-        </html>
-        """
-
-        resource = TextResource(mime_type="text/html", text=text_data, metadata={})
-        mined_resources = miner.mine(key, resource)
-
-        # Check is_dependency flag
-        dependencies = [mr for mr in mined_resources if mr.is_dependency]
-        non_dependencies = [mr for mr in mined_resources if not mr.is_dependency]
-
-        dependency_urls = {str(mr.key) for mr in dependencies}
-        non_dependency_urls = {str(mr.key) for mr in non_dependencies}
-
-        expected_dependencies = {
-            "url:https://example.com/about/",  # Direct parent - only this is dependency
-        }
-
-        expected_non_dependencies = {
-            "url:https://example.com/",  # Root - not direct parent
-            "url:https://example.com/about/history/",  # Sibling - same level
-            "url:https://example.com/services/",  # Different branch
-            "url:https://example.com/contact/",  # Different branch
-            "url:https://example.com/about/team/members/",  # Child - lower in hierarchy
-            "url:https://example.com/about/team/management/",  # Child - lower in hierarchy
-        }
-
-        assert dependency_urls == expected_dependencies
-        assert non_dependency_urls == expected_non_dependencies
-
     def test_miner_normalizes_urls(self):
         """Test that HTMLPageMiner normalizes URLs by adding trailing slashes and removing query params."""
         miner = HTMLPageMiner(allowed_domains=["*"])
@@ -1095,7 +1036,7 @@ class TestHTMLPageMiner:
         resource = TextResource(mime_type="text/html", text=text_data, metadata={})
         mined_resources = miner.mine(key, resource)
 
-        # Should return relative URLs with path: prefix, all marked as dependencies since no hierarchy logic
+        # Should return relative URLs with path: prefix
         expected_keys = {
             Key(type="path", value="pages/local-page/"),
             Key(type="path", value="/absolute/path/page/"),
@@ -1104,74 +1045,3 @@ class TestHTMLPageMiner:
         assert len(mined_resources) == 2
         mined_keys = {mr.key for mr in mined_resources}
         assert mined_keys == expected_keys
-
-        # All should be dependencies since there's no hierarchy logic for non-URL keys
-        assert all(mr.is_dependency for mr in mined_resources)
-
-
-@pytest.mark.django_db
-@pytest.mark.database_backend
-class TestMinedResourceDependencies:
-    def test_mined_resource_with_is_dependency_false_not_added_to_dependencies(self):
-        """Test that MinedResource with is_dependency=False are not added as dependencies."""
-
-        # Create a custom miner that returns both dependency and non-dependency resources
-
-        class CustomMiner(BaseMiner):
-            def mine(self, key: Key, resource):
-                return [
-                    MinedResource(
-                        key=Key(type="url", value="https://example.com/dependency.jpg"),
-                        metadata={"alt_text": "Dependency image"},
-                        is_dependency=True,  # This should be added as dependency
-                    ),
-                    MinedResource(
-                        key=Key(
-                            type="url", value="https://example.com/non-dependency.jpg"
-                        ),
-                        metadata={"alt_text": "Non-dependency image"},
-                        is_dependency=False,  # This should NOT be added as dependency
-                    ),
-                ]
-
-        # Create a resource to mine
-        resource = ConcreteResource.objects.create(
-            key="url:https://example.com/test.html",
-            mime_type="text/html",
-            data_type="text",
-            text_data="<html><body><p>Test content</p></body></html>",
-            metadata={},
-            status=ConcreteResource.Status.EXTRACTED,
-        )
-
-        # Create pipeline with custom miner
-        pipeline = Pipeline(
-            seeders=[],
-            extractors=[],
-            miners=[CustomMiner()],
-            transformers=[],
-            loaders=[],
-        )
-
-        now = timezone.now()
-        with freeze_time(now):
-            pipeline.mine()
-
-        # Refresh resource from database
-        resource.refresh_from_db()
-
-        # Check that only the dependency resource was added
-        dependencies = list(resource.dependencies.all())
-        dependency_keys = [dep.key for dep in dependencies]
-
-        # Only the resource with is_dependency=True should be in dependencies
-        assert "url:https://example.com/dependency.jpg" in dependency_keys
-        assert "url:https://example.com/non-dependency.jpg" not in dependency_keys
-
-        # Both resources should still be created in the database
-        assert ConcreteResource.objects.filter(
-            key="url:https://example.com/dependency.jpg"
-        ).exists()
-        assert ConcreteResource.objects.filter(
-            key="url:https://example.com/non-dependency.jpg"
-        ).exists()

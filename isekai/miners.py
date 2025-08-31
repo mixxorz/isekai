@@ -334,14 +334,7 @@ class HTMLPageMiner(BaseHTMLMiner):
                 else:
                     mined_key = Key(type="path", value=resolved_url)
 
-                # Determine if this should be a dependency based on URL hierarchy
-                is_dependency = self._should_be_dependency(key, resolved_url)
-
-                mined_resources.append(
-                    MinedResource(
-                        key=mined_key, metadata=metadata, is_dependency=is_dependency
-                    )
-                )
+                mined_resources.append(MinedResource(key=mined_key, metadata=metadata))
 
         return mined_resources
 
@@ -372,24 +365,3 @@ class HTMLPageMiner(BaseHTMLMiner):
         # Reconstruct URL without query/fragment
         normalized = parsed._replace(path=path, query="", fragment="").geturl()
         return normalized
-
-    def _should_be_dependency(self, current_key: Key, target_url: str) -> bool:
-        """Determine if target URL should be marked as a dependency based on hierarchy."""
-        if current_key.type != "url":
-            return True
-
-        current_parsed = urlparse(current_key.value)
-        target_parsed = urlparse(target_url)
-
-        if current_parsed.netloc != target_parsed.netloc:
-            return False
-
-        current_path = current_parsed.path.rstrip("/")
-        target_path = target_parsed.path.rstrip("/")
-
-        # Target is direct parent if removing the last segment from current equals target
-        if current_path.count("/") > 0:
-            parent_path = "/".join(current_path.split("/")[:-1])
-            return parent_path == target_path
-
-        return False

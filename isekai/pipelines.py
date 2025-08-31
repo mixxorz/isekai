@@ -206,29 +206,15 @@ class Pipeline:
                         )
 
                 resource.transition_to(Resource.Status.EXTRACTED)
+                resource.save()
 
                 logger.info(f"Successfully extracted: {resource.key}")
 
             except Exception as e:
                 resource.last_error = f"{e.__class__.__name__}: {str(e)}"
+                resource.save()
 
                 logger.error(f"Failed to extract {resource.key}: {e}")
-
-        logger.info("Saving changes to database...")
-
-        Resource.objects.bulk_update(
-            resources,
-            [
-                "mime_type",
-                "data_type",
-                "text_data",
-                "blob_data",
-                "metadata",
-                "status",
-                "extracted_at",
-                "last_error",
-            ],
-        )
 
         extracted_count = sum(
             1 for r in resources if r.status == Resource.Status.EXTRACTED
@@ -312,19 +298,9 @@ class Pipeline:
 
             except Exception as e:
                 resource.last_error = f"{e.__class__.__name__}: {str(e)}"
+                resource.save()
 
                 logger.error(f"Failed to mine {resource.key}: {e}")
-
-        logger.info("Saving changes to database...")
-
-        Resource.objects.bulk_update(
-            resources,
-            [
-                "status",
-                "mined_at",
-                "last_error",
-            ],
-        )
 
         seeded_resource_count_after = Resource.objects.filter(
             status=Resource.Status.SEEDED

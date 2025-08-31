@@ -478,3 +478,68 @@ class TestSpec:
         reconstructed_spec = Spec.from_dict(dict_data)
 
         assert reconstructed_spec == original_spec
+
+    def test_find_refs(self):
+        spec = Spec(
+            content_type="foo.WithRefs",
+            attributes={
+                "title": "Test Title",
+                "image": BlobRef(
+                    Key(type="url", value="https://example.com/image.png")
+                ),
+                "call_to_action": PkRef(Key(type="gen", value="call_to_action_123")),
+                "child_object": {
+                    "pk": PkRef(Key(type="gen", value="child_object_456")),
+                    "image": BlobRef(Key(type="file", value="child.jpg")),
+                    "name": "Child Object Name",
+                },
+                "refs_list": [
+                    PkRef(Key(type="gen", value="ref1")),
+                    BlobRef(Key(type="file", value="list_blob.jpg")),
+                    "string_value",
+                ],
+                "duplicate_ref": PkRef(
+                    Key(type="gen", value="call_to_action_123")
+                ),  # Duplicate
+                "nested": {
+                    "deep": {
+                        "ref": PkRef(Key(type="gen", value="deep_ref")),
+                        "blob": BlobRef(Key(type="url", value="deep.png")),
+                    }
+                },
+            },
+        )
+
+        refs = spec.find_refs()
+
+        # Should contain all unique refs without duplicates
+        expected_refs = [
+            BlobRef(Key(type="url", value="https://example.com/image.png")),
+            PkRef(Key(type="gen", value="call_to_action_123")),
+            PkRef(Key(type="gen", value="child_object_456")),
+            BlobRef(Key(type="file", value="child.jpg")),
+            PkRef(Key(type="gen", value="ref1")),
+            BlobRef(Key(type="file", value="list_blob.jpg")),
+            PkRef(Key(type="gen", value="deep_ref")),
+            BlobRef(Key(type="url", value="deep.png")),
+        ]
+
+        assert len(refs) == len(expected_refs)
+        for ref in expected_refs:
+            assert ref in refs
+
+    def test_find_refs_no_refs(self):
+        spec = Spec(
+            content_type="foo.NoRefs",
+            attributes={
+                "title": "Test Title",
+                "count": 42,
+                "nested": {
+                    "value": "string",
+                    "list": [1, 2, "three"],
+                },
+            },
+        )
+
+        refs = spec.find_refs()
+        assert refs == []

@@ -163,6 +163,29 @@ class Spec:
             },
         )
 
+    def find_refs(self) -> list["BaseRef"]:
+        """
+        Find all Refs in the attributes dict.
+        """
+        refs = []
+        seen = set()
+
+        def collect_refs(value):
+            if isinstance(value, BaseRef):
+                ref_str = str(value)
+                if ref_str not in seen:
+                    seen.add(ref_str)
+                    refs.append(value)
+            elif isinstance(value, dict):
+                for v in value.values():
+                    collect_refs(v)
+            elif isinstance(value, list | tuple):
+                for item in value:
+                    collect_refs(item)
+
+        collect_refs(self.attributes)
+        return refs
+
 
 @dataclass(frozen=True, slots=True)
 class BaseRef:

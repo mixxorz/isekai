@@ -29,10 +29,12 @@ class HTTPExtractor(BaseExtractor):
         max_retries: int = 3,
         max_delay: float = 60.0,
         timeout: int = 30,
+        no_retry_status_codes: set[int] | None = None,
     ):
         self.max_retries = max_retries
         self.max_delay = max_delay
         self.timeout = timeout
+        self.no_retry_status_codes = no_retry_status_codes or {404}
 
     def extract(self, key: Key) -> TextResource | BlobResource | None:
         # We only handle keys of type "url"
@@ -75,10 +77,22 @@ class HTTPExtractor(BaseExtractor):
                 response = requests.get(url, timeout=self.timeout)
                 response.raise_for_status()
                 return response
-            except (
-                requests.exceptions.RequestException,
-                requests.exceptions.HTTPError,
-            ) as e:
+            except requests.exceptions.HTTPError as e:
+                # Don't retry configured status codes, raise immediately
+                if (
+                    e.response is not None
+                    and e.response.status_code in self.no_retry_status_codes
+                ):
+                    raise e
+
+                if attempt < self.max_retries:
+                    delay = min(2**attempt, self.max_delay)
+                    time.sleep(delay)
+                    continue
+
+                # Last attempt failed, re-raise the exception
+                raise e
+            except requests.exceptions.RequestException as e:
                 if attempt < self.max_retries:
                     delay = min(2**attempt, self.max_delay)
                     time.sleep(delay)

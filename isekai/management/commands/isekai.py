@@ -1,4 +1,3 @@
-import logging
 import time
 
 from django.core.management.base import BaseCommand
@@ -92,7 +91,7 @@ class Command(BaseCommand):
         # Run the pipeline
         console.print()
         pipeline_start = time.time()
-        progress_logger = LiveProgressLogger(logger_name=None)
+        progress_logger = LiveProgressLogger()
 
         results = []
 
@@ -202,8 +201,6 @@ class Command(BaseCommand):
     ) -> OperationResult | None:
         messages = []
         with progress_logger.task(step_name) as task_manager:
-            task_manager.logger.setLevel(logging.INFO)
-
             try:
                 result = step_func()
                 messages = result.messages

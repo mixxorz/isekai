@@ -1664,3 +1664,141 @@ class TestLoad:
         assert updated_author.name == "Idempotent Author"
         assert updated_author.email == "idempotent@example.com"
         assert updated_author.bio == {"test": "data"}
+
+    def test_load_skips_resources_with_unready_dependencies_and_cascade_effect(self):
+        """Test that resources with unready dependencies are skipped, including cascading effect."""
+        # Create a chain of dependencies: base_author -> dependent_article -> dependent_profile
+        base_author_key = Key(type="author", value="base_author")
+        dependent_article_key = Key(type="article", value="dependent_article")
+        dependent_profile_key = Key(type="profile", value="dependent_profile")
+
+        # Also create an independent resource that should be loaded successfully
+        independent_author_key = Key(type="author", value="independent_author")
+
+        # Create base author resource in MINED status (not ready for loading)
+        base_author_resource = ConcreteResource.objects.create(
+            key=str(base_author_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="author"
+            ),
+            target_spec={
+                "name": "Base Author",
+                "email": "base@example.com",
+            },
+            status=ConcreteResource.Status.MINED,  # NOT TRANSFORMED - dependency not ready
+        )
+
+        # Create article resource in TRANSFORMED status that depends on the unready author
+        dependent_article_resource = ConcreteResource.objects.create(
+            key=str(dependent_article_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="article"
+            ),
+            target_spec={
+                "title": "Dependent Article",
+                "content": "This article depends on the unready author.",
+                "author_id": str(PkRef(base_author_key)),
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+        dependent_article_resource.dependencies.add(base_author_resource)
+
+        # Create profile resource in TRANSFORMED status that depends on the article
+        dependent_profile_resource = ConcreteResource.objects.create(
+            key=str(dependent_profile_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="authorprofile"
+            ),
+            target_spec={
+                "author_id": str(PkRef(base_author_key)),
+                "website": "https://dependent.example.com",
+                "settings": {
+                    "featured_article": str(PkRef(dependent_article_key)),
+                },
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+        dependent_profile_resource.dependencies.add(
+            base_author_resource, dependent_article_resource
+        )
+
+        # Create an independent resource that should be loaded successfully
+        independent_author_resource = ConcreteResource.objects.create(
+            key=str(independent_author_key),
+            mime_type="application/json",
+            data_type="text",
+            text_data="does not matter",
+            metadata={},
+            target_content_type=ContentType.objects.get(
+                app_label="testapp", model="author"
+            ),
+            target_spec={
+                "name": "Independent Author",
+                "email": "independent@example.com",
+            },
+            status=ConcreteResource.Status.TRANSFORMED,
+        )
+
+        now = timezone.now()
+        with freeze_time(now):
+            pipeline = get_django_pipeline()
+            result = pipeline.load()
+
+        # Verify that only the independent resource was processed and loaded
+        independent_author_resource.refresh_from_db()
+        dependent_article_resource.refresh_from_db()
+        dependent_profile_resource.refresh_from_db()
+        base_author_resource.refresh_from_db()
+
+        # Independent resource should be loaded successfully
+        assert independent_author_resource.status == ConcreteResource.Status.LOADED
+        assert independent_author_resource.target_object_id is not None
+        assert independent_author_resource.loaded_at == now
+
+        # Resources with unready dependencies should remain TRANSFORMED (not processed)
+        assert dependent_article_resource.status == ConcreteResource.Status.TRANSFORMED
+        assert dependent_article_resource.target_object_id is None
+        assert dependent_article_resource.loaded_at is None
+        assert (
+            not dependent_article_resource.last_error
+        )  # No error because it wasn't processed
+
+        # Resources that depend on unready resources should also remain TRANSFORMED
+        assert dependent_profile_resource.status == ConcreteResource.Status.TRANSFORMED
+        assert dependent_profile_resource.target_object_id is None
+        assert dependent_profile_resource.loaded_at is None
+        assert (
+            not dependent_profile_resource.last_error
+        )  # No error because it wasn't processed
+
+        # The base resource should remain unchanged in MINED status
+        assert base_author_resource.status == ConcreteResource.Status.MINED
+        assert base_author_resource.target_object_id is None
+        assert base_author_resource.loaded_at is None
+
+        # Verify only one Author object was created (the independent one)
+        assert Author.objects.count() == 1
+        independent_author = Author.objects.get()
+        assert independent_author.name == "Independent Author"
+        assert independent_author.email == "independent@example.com"
+
+        # Verify no Article or AuthorProfile objects were created
+        assert Article.objects.count() == 0
+        assert AuthorProfile.objects.count() == 0
+
+        # Verify operation result indicates success with partial processing
+        assert result.result == "success"
+        assert "Processed 3 resources" in result.messages  # Total resources considered
+        assert "Loaded 1 resources" in result.messages  # Only 1 actually loaded

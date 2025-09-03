@@ -436,7 +436,7 @@ class Pipeline:
         ).prefetch_related(
             Prefetch(
                 "dependencies",
-                queryset=Resource.objects.only("key"),
+                queryset=Resource.objects.only("key", "status"),
             )
         )
 
@@ -444,6 +444,9 @@ class Pipeline:
 
         # Calculate build order
         key_to_resource = {resource.key: resource for resource in resources}
+        key_to_dependencies = {
+            resource.key: list(resource.dependencies.all()) for resource in resources
+        }
         nodes = key_to_resource.keys()
         edges = [
             (resource.key, dep.key)
@@ -457,6 +460,27 @@ class Pipeline:
         ]
 
         graph = resolve_build_order(nodes, edges)
+
+        # Track resources that can't be loaded due to unready dependencies.
+        # Since graph is in topological order (dependencies first), cascading happens
+        # automatically. when a dependency is marked unready, dependents will see it
+        # in this set when processed later and also become unready. The topological
+        # sort guarantees dependents are never processed before their dependencies.
+        unready_resources = set()
+
+        ready_states = (Resource.Status.LOADED, Resource.Status.TRANSFORMED)
+
+        for node in graph:
+            for resource_key in node:
+                dependencies = key_to_dependencies[resource_key]
+                if any(
+                    dep.status not in ready_states or dep.key in unready_resources
+                    for dep in dependencies
+                ):
+                    # If any of the resources in this node becomes unready, the
+                    # whole node is unready
+                    unready_resources.update(node)
+                    break
 
         logger.info(f"Build order resolved into {len(graph)} phases")
 
@@ -516,6 +540,12 @@ class Pipeline:
 
         for node in graph:
             # Each node in the graph is comprised of one OR MORE resources.
+
+            # If any resource in this node is unready, skip the entire node
+            if any(rkey in unready_resources for rkey in node):
+                logger.warning(f"Skipping node with unready dependencies: {list(node)}")
+                continue
+
             # If there is more than one resource, that means that those resources
             # need to be loaded together using a two-phase loading process in order
             # to resolve circular dependencies.

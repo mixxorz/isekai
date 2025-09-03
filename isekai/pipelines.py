@@ -641,13 +641,21 @@ class Pipeline:
         loaded_count = sum(
             1 for r in all_resources if r.status == Resource.Status.LOADED
         )
+        skipped_count = sum(1 for r in all_resources if r.key in unready_resources)
 
-        logger.info(f"Load completed: {loaded_count} successful")
+        logger.info(
+            f"Load completed: {loaded_count} successful, {skipped_count} skipped"
+        )
 
         messages = [
             f"Processed {len(all_resources)} resources",
             f"Loaded {loaded_count} resources",
         ]
+
+        if skipped_count > 0:
+            messages.append(
+                f"Skipped {skipped_count} resources due to unready dependencies"
+            )
 
         return OperationResult(
             result="success",

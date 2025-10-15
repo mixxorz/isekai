@@ -1221,12 +1221,12 @@ class TestModelLoader:
 
         loader = ModelLoader()
 
-        # Create author spec
+        # Create author spec with short name
         author_key = Key(type="author", value="chained_author")
         author_spec = Spec(
             content_type="testapp.Author",
             attributes={
-                "name": "Chained Author",
+                "name": "Alice",
                 "email": "chained@example.com",
             },
         )
@@ -1238,7 +1238,7 @@ class TestModelLoader:
             attributes={
                 "author_id": ResourceRef(author_key).pk,
                 "website": "https://chained.example.com",
-                "twitter_handle": f"Follow {ref(ResourceRef(author_key).name)} on Twitter",
+                "twitter_handle": f"@{ref(ResourceRef(author_key).name)}",
             },
         )
 
@@ -1253,7 +1253,7 @@ class TestModelLoader:
         profile = next(obj[1] for obj in objects if isinstance(obj[1], AuthorProfile))
 
         # Verify chained attribute access was resolved
-        assert profile.twitter_handle == "Follow Chained Author on Twitter"
+        assert profile.twitter_handle == "@Alice"
         assert profile.author == author
 
     def test_load_with_string_ref_no_refs(self):
@@ -1306,12 +1306,12 @@ class TestModelLoader:
 
         loader = ModelLoader()
 
-        # Create author spec
+        # Create author spec with short name to avoid varchar length issues
         author_key = Key(type="author", value="field_type_author")
         author_spec = Spec(
             content_type="testapp.Author",
             attributes={
-                "name": "Field Type Author",
+                "name": "Alice",
                 "email": f"contact-{ref(ResourceRef(author_key).name)}@example.com",  # EmailField with ref
             },
         )
@@ -1333,20 +1333,18 @@ class TestModelLoader:
 
         assert len(objects) == 2
 
-        # Find objects (need to get the author's actual name since it references itself)
-        # The author.name is "Field Type Author" but email uses a ref to itself which creates
-        # a circular reference during creation. Let's verify the final resolved values.
+        # Find objects
         author = next(obj[1] for obj in objects if isinstance(obj[1], Author))
         profile = next(obj[1] for obj in objects if isinstance(obj[1], AuthorProfile))
 
         # Verify different field types all resolved refs correctly
-        assert author.name == "Field Type Author"
+        assert author.name == "Alice"
         # Email field should have the ref resolved
-        assert author.email == "contact-Field Type Author@example.com"
+        assert author.email == "contact-Alice@example.com"
         # URLField should have ref resolved
-        assert profile.website == "https://Field Type Author.example.com"
+        assert profile.website == "https://Alice.example.com"
         # CharField should have ref resolved
-        assert profile.twitter_handle == "@Field Type Author"
+        assert profile.twitter_handle == "@Alice"
 
     def test_load_with_string_ref_external_resourceref(self):
         """Test string ref resolution with external ResourceRef resolved via resolver."""

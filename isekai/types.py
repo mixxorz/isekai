@@ -244,42 +244,48 @@ class ModelRef:
     def __init__(
         self, content_type: str, attr_path: tuple[str, ...] = (), **lookup_kwargs
     ):
-        object.__setattr__(self, "content_type", content_type)
-        object.__setattr__(self, "lookup_kwargs", lookup_kwargs)
-        object.__setattr__(self, "attr_path", attr_path)
+        object.__setattr__(self, "_content_type", content_type)
+        object.__setattr__(self, "_lookup_kwargs", lookup_kwargs)
+        object.__setattr__(self, "_attr_path", attr_path)
+
+    @property
+    def content_type(self) -> str:
+        return self._content_type
+
+    @property
+    def lookup_kwargs(self) -> dict[str, Any]:
+        return self._lookup_kwargs
+
+    @property
+    def attr_path(self) -> tuple[str, ...]:
+        return self._attr_path
 
     def __getattr__(self, name: str) -> "ModelRef":
         """
         Capture attribute access and return a new ModelRef with extended attr_path.
         """
-        # Avoid infinite recursion for special attributes
-        if name in ("content_type", "lookup_kwargs", "attr_path", "_prefix"):
-            raise AttributeError(
-                f"'{type(self).__name__}' object has no attribute '{name}'"
-            )
-
         # Return new ModelRef with extended attribute path
         new_ref = ModelRef.__new__(ModelRef)
-        object.__setattr__(new_ref, "content_type", self.content_type)
-        object.__setattr__(new_ref, "lookup_kwargs", self.lookup_kwargs)
-        object.__setattr__(new_ref, "attr_path", self.attr_path + (name,))
+        object.__setattr__(new_ref, "_content_type", self._content_type)
+        object.__setattr__(new_ref, "_lookup_kwargs", self._lookup_kwargs)
+        object.__setattr__(new_ref, "_attr_path", self._attr_path + (name,))
         return new_ref
 
     def __eq__(self, other):
         if not isinstance(other, ModelRef):
             return False
         return (
-            self.content_type == other.content_type
-            and self.lookup_kwargs == other.lookup_kwargs
-            and self.attr_path == other.attr_path
+            self._content_type == other._content_type
+            and self._lookup_kwargs == other._lookup_kwargs
+            and self._attr_path == other._attr_path
         )
 
     def __hash__(self):
         return hash(
             (
-                self.content_type,
-                tuple(sorted(self.lookup_kwargs.items())),
-                self.attr_path,
+                self._content_type,
+                tuple(sorted(self._lookup_kwargs.items())),
+                self._attr_path,
             )
         )
 

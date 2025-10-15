@@ -18,7 +18,7 @@ from isekai.types import (
     ModelRef,
     OperationResult,
     PathFileProxy,
-    PkRef,
+    ResourceRef,
     SeededResource,
     Spec,
     TextResource,
@@ -490,25 +490,17 @@ class Pipeline:
         @overload
         def resolver(ref: BlobRef) -> FileProxy: ...
         @overload
-        def resolver(ref: PkRef) -> int | str: ...
+        def resolver(ref: ResourceRef) -> Model | int | str: ...
         @overload
         def resolver(ref: ModelRef) -> Model: ...
 
-        def resolver(ref: PkRef | BlobRef | ModelRef) -> FileProxy | int | str | Model:
-            # If it's a PkRef, we must return a primary key
-            if type(ref) is PkRef:
-                # Try to find the object in the pool of resources currently being loaded
-                if str(ref.key) in key_to_obj:
-                    return key_to_obj[str(ref.key)].pk
-
-                # If it's not there, then it's a reference to a resource that has
-                # already been loaded
-                if obj := Resource.objects.filter(key=str(ref.key)).first():
-                    if obj and obj.target_object_id:
-                        return obj.target_object_id
+        def resolver(
+            ref: BlobRef | ResourceRef | ModelRef,
+        ) -> FileProxy | Model | int | str:
+            from django.apps import apps
 
             # If it's a BlobRef, we must return a FileProxy
-            elif type(ref) is BlobRef:
+            if type(ref) is BlobRef:
                 if str(ref.key) in key_to_obj:
                     resource = key_to_resource[str(ref.key)]
                     if resource.blob_data:
@@ -520,17 +512,41 @@ class Pipeline:
                     if obj and obj.blob_data:
                         return FieldFileProxy(ff=obj.blob_data)
 
-            # If it's a ModelRef, we must return a model instance
-            elif type(ref) is ModelRef:
+            # If it's a ResourceRef, resolve to model instance or attribute
+            elif type(ref) is ResourceRef:
                 # Try to find the object in the pool of resources currently being loaded
                 if str(ref.key) in key_to_obj:
-                    return key_to_obj[str(ref.key)]
+                    obj = key_to_obj[str(ref.key)]
+                    # PK optimization: return pk directly without fetching if attr_path is ("pk",)
+                    if ref.attr_path == ("pk",):
+                        return obj.pk
+                    # Traverse attribute path
+                    for attr in ref.attr_path:
+                        obj = getattr(obj, attr)
+                    return obj
 
                 # If it's not there, then it's a reference to a resource that has
                 # already been loaded
-                if obj := Resource.objects.filter(key=str(ref.key)).first():
-                    if obj and obj.target_object:
-                        return obj.target_object
+                if resource := Resource.objects.filter(key=str(ref.key)).first():
+                    # PK optimization: return target_object_id directly if attr_path is ("pk",)
+                    if ref.attr_path == ("pk",) and resource.target_object_id:
+                        return resource.target_object_id
+                    # Otherwise fetch target_object and traverse
+                    if resource.target_object:
+                        obj = resource.target_object
+                        for attr in ref.attr_path:
+                            obj = getattr(obj, attr)
+                        return obj
+
+            # If it's a ModelRef, fetch from DB using content_type and lookup_kwargs
+            elif type(ref) is ModelRef:
+                app_label, model_name = ref.content_type.split(".", 1)
+                model_class = apps.get_model(app_label, model_name)
+                obj = model_class.objects.get(**ref.lookup_kwargs)
+                # Traverse attribute path
+                for attr in ref.attr_path:
+                    obj = getattr(obj, attr)
+                return obj
 
             # If the framework is working correctly, it is logically impossible to
             # reach this case. The build order resolver ensures that all dependency

@@ -1,4 +1,4 @@
-from isekai.types import BlobRef, Key, ModelRef, PkRef, Spec
+from isekai.types import BlobRef, Key, ModelRef, PkRef, ResourceRef, Spec
 from tests.test_models import pytest
 
 
@@ -75,6 +75,65 @@ class TestRefs:
         # Invalid prefix should raise ValueError
         with pytest.raises(ValueError):
             BlobRef.from_string("blob:\\test:456")
+
+    def test_resource_ref_basic(self):
+        key = Key(type="user", value="123")
+
+        # Basic ResourceRef without attribute access
+        ref = ResourceRef(key)
+        assert str(ref) == "isekai-resource-ref:\\user:123"
+
+        # ResourceRef from string
+        ref = ResourceRef.from_string("isekai-resource-ref:\\user:123")
+        assert ref.key == key
+        assert ref.attr_path == ()
+
+    def test_resource_ref_with_pk_attribute(self):
+        key = Key(type="user", value="123")
+
+        # ResourceRef with .pk access
+        ref = ResourceRef(key).pk
+        assert str(ref) == "isekai-resource-ref:\\user:123::pk"
+
+        # ResourceRef from string with pk
+        ref = ResourceRef.from_string("isekai-resource-ref:\\user:123::pk")
+        assert ref.key == key
+        assert ref.attr_path == ("pk",)
+
+    def test_resource_ref_with_chained_attributes(self):
+        key = Key(type="user", value="123")
+
+        # ResourceRef with chained attribute access
+        ref = ResourceRef(key).group.name
+        assert str(ref) == "isekai-resource-ref:\\user:123::group.name"
+
+        # ResourceRef from string with chained attributes
+        ref = ResourceRef.from_string("isekai-resource-ref:\\user:123::group.name")
+        assert ref.key == key
+        assert ref.attr_path == ("group", "name")
+
+    def test_resource_ref_with_deep_chaining(self):
+        key = Key(type="article", value="456")
+
+        # ResourceRef with deep chaining
+        ref = ResourceRef(key).author.group.name.slug
+        assert str(ref) == "isekai-resource-ref:\\article:456::author.group.name.slug"
+
+        # ResourceRef from string with deep chaining
+        ref = ResourceRef.from_string(
+            "isekai-resource-ref:\\article:456::author.group.name.slug"
+        )
+        assert ref.key == key
+        assert ref.attr_path == ("author", "group", "name", "slug")
+
+    def test_resource_ref_invalid_string(self):
+        # Invalid format should raise ValueError
+        with pytest.raises(ValueError):
+            ResourceRef.from_string("invalid-string")
+
+        # Invalid prefix should raise ValueError
+        with pytest.raises(ValueError):
+            ResourceRef.from_string("resource:\\test:123")
 
 
 class TestSpec:

@@ -516,9 +516,6 @@ class Pipeline:
                 # Try to find the object in the pool of resources currently being loaded
                 if str(ref.key) in key_to_obj:
                     obj = key_to_obj[str(ref.key)]
-                    # PK optimization: return pk directly without fetching if attr_path is ("pk",)
-                    if ref.ref_attr_path == ("pk",):
-                        return obj.pk
                     # Traverse attribute path
                     for attr in ref.ref_attr_path:
                         obj = getattr(obj, attr)
@@ -531,8 +528,7 @@ class Pipeline:
                     if ref.ref_attr_path == ("pk",) and resource.target_object_id:
                         return resource.target_object_id
                     # Otherwise fetch target_object and traverse
-                    if resource.target_object:
-                        obj = resource.target_object
+                    if obj := resource.target_object:
                         for attr in ref.ref_attr_path:
                             obj = getattr(obj, attr)
                         return obj

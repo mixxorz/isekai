@@ -7,7 +7,7 @@ from typing import IO, TYPE_CHECKING, Any, ClassVar, Literal, Protocol, overload
 from urllib.parse import parse_qs, unquote, urlencode
 
 if TYPE_CHECKING:
-    from django.db.models import FieldFile, Model
+    from django.db.models import FieldFile
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,16 +383,16 @@ class Resolver(Protocol):
     """
     A resolver function that takes a ref and returns the appropriate value:
     - BlobRef -> FileProxy
-    - ResourceRef -> model instance or attribute value
-    - ModelRef -> model instance or attribute value
+    - ResourceRef -> Any (due to attribute chaining)
+    - ModelRef -> Any (due to attribute chaining)
     """
 
     @overload
     def __call__(self, ref: BlobRef) -> FileProxy: ...
     @overload
-    def __call__(self, ref: ResourceRef) -> "Model | int | str": ...
+    def __call__(self, ref: ResourceRef) -> Any: ...
     @overload
-    def __call__(self, ref: ModelRef) -> "Model": ...
+    def __call__(self, ref: ModelRef) -> Any: ...
 
 
 @dataclass

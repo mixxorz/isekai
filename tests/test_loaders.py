@@ -19,7 +19,13 @@ from isekai.types import (
     ResourceRef,
     Spec,
 )
-from tests.testapp.models import Article, Author, AuthorProfile, ConcreteResource, Tag
+from tests.testapp.models import (
+    Article,
+    Author,
+    AuthorProfile,
+    ConcreteResource,
+    Tag,
+)
 
 
 @pytest.mark.django_db
@@ -946,6 +952,62 @@ class TestModelLoader:
         objects = loader.load([], resolver)
 
         assert objects == []
+
+    def test_load_with_resourceref_for_required_integer_field_fails(self):
+        """Test that using ResourceRef for a required non-FK field fails with NOT NULL constraint."""
+        from django.db.utils import IntegrityError
+
+        def resolver(ref):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
+
+        loader = ModelLoader()
+
+        # Create author spec
+        author_key = Key(type="author", value="book_author")
+        author_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "Book Author",
+                "email": "bookauthor@example.com",
+            },
+        )
+
+        # Create another author whose page_count attribute we'll try to reference
+        page_count_author_key = Key(type="author", value="page_count_source")
+        page_count_author_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "Page Count Source",
+                "email": "pagesource@example.com",
+                "bio": {"page_count": 300},  # Store page count in bio
+            },
+        )
+
+        # Create book spec that tries to use ResourceRef for page_count (required integer field)
+        book_key = Key(type="book", value="test_book")
+        book_spec = Spec(
+            content_type="testapp.Book",
+            attributes={
+                "title": "Test Book",
+                "author_id": ResourceRef(author_key).pk,
+                # This should fail: page_count is a required IntegerField, not a FK
+                # ResourceRef won't set a temp value because it's not detecting it as a FK field
+                "page_count": ResourceRef(page_count_author_key).bio,
+            },
+        )
+
+        # Expect IntegrityError due to NOT NULL constraint on page_count
+        with pytest.raises(
+            IntegrityError, match="NOT NULL constraint failed.*page_count"
+        ):
+            loader.load(
+                [
+                    (author_key, author_spec),
+                    (page_count_author_key, page_count_author_spec),
+                    (book_key, book_spec),
+                ],
+                resolver,
+            )
 
     def test_load_with_arbitrary_attribute_paths(self):
         """Test that ResourceRef with arbitrary attribute paths like .name, .email work."""

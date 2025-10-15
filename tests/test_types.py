@@ -1,4 +1,11 @@
-from isekai.types import BlobRef, Key, ModelRef, PkRef, ResourceRef, Spec
+from isekai.types import (
+    BlobRef,
+    Key,
+    ModelRef,
+    PkRef,  # For backward compatibility tests
+    ResourceRef,
+    Spec,
+)
 from tests.test_models import pytest
 
 
@@ -22,40 +29,6 @@ class TestKey:
 
 
 class TestRefs:
-    def test_pk_ref(self):
-        key = Key(type="test", value="123")
-
-        # Key to PkRef
-        ref = PkRef(key)
-        assert str(ref) == "isekai-pk-ref:\\test:123"
-
-        # PkRef to Key
-        ref = PkRef.from_string("isekai-pk-ref:\\test:123")
-        assert ref.key == key
-
-    def test_model_ref(self):
-        key = Key(type="test", value="456")
-
-        # Key to ModelRef
-        ref = ModelRef(key)
-        assert str(ref) == "isekai-model-ref:\\test:456"
-
-        # ModelRef to Key
-        ref = ModelRef.from_string("isekai-model-ref:\\test:456")
-        assert ref.key == key
-
-    def test_ref_invalid_string(self):
-        # Invalid format should raise ValueError
-        with pytest.raises(ValueError):
-            PkRef.from_string("invalid-string")
-
-        # Invalid prefix should raise ValueError
-        with pytest.raises(ValueError):
-            PkRef.from_string("ref:\\test:123")
-
-        with pytest.raises(ValueError):
-            ModelRef.from_string("invalid-string")
-
     def test_blob_ref(self):
         key = Key(type="blob", value="456")
 

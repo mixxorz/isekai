@@ -114,6 +114,58 @@ class ModelLoader(BaseLoader):
 
         return key_to_temp_fk
 
+    def _get_temp_value_for_field(self, field, ref_key, key_to_temp_fk):
+        """Generate appropriate temporary value based on field type."""
+        from django.utils import timezone
+
+        field_type = field.get_internal_type()
+
+        # FK fields use the temp PK mapping
+        if field_type in ("ForeignKey", "OneToOneField"):
+            return key_to_temp_fk[ref_key]
+
+        # Integer fields
+        if field_type in (
+            "IntegerField",
+            "PositiveIntegerField",
+            "BigIntegerField",
+            "SmallIntegerField",
+        ):
+            return -999999
+
+        # String fields
+        if field_type in (
+            "CharField",
+            "TextField",
+            "EmailField",
+            "URLField",
+            "SlugField",
+        ):
+            return "temp_value"
+
+        # Boolean fields
+        if field_type == "BooleanField":
+            return False
+
+        # Date/Time fields
+        if field_type == "DateTimeField":
+            return timezone.now()
+        if field_type == "DateField":
+            return timezone.now().date()
+        if field_type == "TimeField":
+            return timezone.now().time()
+
+        # Numeric fields
+        if field_type in ("FloatField", "DecimalField"):
+            return -999.999
+
+        # UUID fields
+        if field_type == "UUIDField":
+            return uuid.uuid4()
+
+        # For nullable fields or unknown types, return None
+        return None
+
     def _create_object(
         self,
         key,
@@ -132,6 +184,15 @@ class ModelLoader(BaseLoader):
             for f in model_class._meta.get_fields()
             if hasattr(f, "contribute_to_class")
         }
+
+        # Add _id accessor fields for FK/OneToOne fields so we can look them up
+        fk_fields = [
+            f
+            for f in model_fields.values()
+            if isinstance(f, models.ForeignKey | models.OneToOneField | ParentalKey)
+        ]
+        for fk_field in fk_fields:
+            model_fields[f"{fk_field.name}_id"] = fk_field
 
         obj_fields = {}
 
@@ -152,9 +213,13 @@ class ModelLoader(BaseLoader):
             elif isinstance(field_value, ResourceRef):
                 if field_value.key in key_to_spec:
                     # Internal ref - defer resolution until after all objects are created
-                    if field_value.attr_path and field_value.attr_path == ("pk",):
-                        # For .pk specifically, we can use temp PK for FK constraints
-                        obj_fields[field_name] = key_to_temp_fk[field_value.key]
+                    # Set appropriate temp value for ANY field type to satisfy NOT NULL
+                    if field:
+                        temp_value = self._get_temp_value_for_field(
+                            field, field_value.key, key_to_temp_fk
+                        )
+                        if temp_value is not None:
+                            obj_fields[field_name] = temp_value
                     # Mark for later resolution regardless
                     pending_refs.append((key, field_name, field_value))
                 else:

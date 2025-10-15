@@ -23,6 +23,7 @@ from tests.testapp.models import (
     Article,
     Author,
     AuthorProfile,
+    Book,
     ConcreteResource,
     Tag,
 )
@@ -953,9 +954,8 @@ class TestModelLoader:
 
         assert objects == []
 
-    def test_load_with_resourceref_for_required_integer_field_fails(self):
-        """Test that using ResourceRef for a required non-FK field fails with NOT NULL constraint."""
-        from django.db.utils import IntegrityError
+    def test_load_with_resourceref_for_required_integer_field(self):
+        """Test that using ResourceRef for a required non-FK integer field works correctly."""
 
         def resolver(ref):
             raise AssertionError(f"Resolver should not be called, got ref: {ref}")
@@ -972,42 +972,62 @@ class TestModelLoader:
             },
         )
 
-        # Create another author whose page_count attribute we'll try to reference
-        page_count_author_key = Key(type="author", value="page_count_source")
-        page_count_author_spec = Spec(
+        # Create another author whose pk (an integer) we'll use for page_count
+        page_count_source_key = Key(type="author", value="page_count_source")
+        page_count_source_spec = Spec(
             content_type="testapp.Author",
             attributes={
                 "name": "Page Count Source",
                 "email": "pagesource@example.com",
-                "bio": {"page_count": 300},  # Store page count in bio
             },
         )
 
-        # Create book spec that tries to use ResourceRef for page_count (required integer field)
+        # Create book spec that uses ResourceRef.pk for page_count (required integer field)
+        # Note: This is a non-FK integer field, not a ForeignKey
         book_key = Key(type="book", value="test_book")
         book_spec = Spec(
             content_type="testapp.Book",
             attributes={
                 "title": "Test Book",
-                "author_id": ResourceRef(author_key).pk,
-                # This should fail: page_count is a required IntegerField, not a FK
-                # ResourceRef won't set a temp value because it's not detecting it as a FK field
-                "page_count": ResourceRef(page_count_author_key).bio,
+                "author_id": ResourceRef(author_key).pk,  # FK field
+                # This should work: ResourceRef.pk for a required IntegerField (not FK)
+                # A temp value will be set, then resolved to the actual pk value
+                "page_count": ResourceRef(
+                    page_count_source_key
+                ).pk,  # Regular integer field
             },
         )
 
-        # Expect IntegrityError due to NOT NULL constraint on page_count
-        with pytest.raises(
-            IntegrityError, match="NOT NULL constraint failed.*page_count"
-        ):
-            loader.load(
-                [
-                    (author_key, author_spec),
-                    (page_count_author_key, page_count_author_spec),
-                    (book_key, book_spec),
-                ],
-                resolver,
-            )
+        objects = loader.load(
+            [
+                (author_key, author_spec),
+                (page_count_source_key, page_count_source_spec),
+                (book_key, book_spec),
+            ],
+            resolver,
+        )
+
+        assert len(objects) == 3
+
+        # Find the objects
+        book_author = next(
+            obj[1]
+            for obj in objects
+            if isinstance(obj[1], Author) and obj[1].name == "Book Author"
+        )
+        page_count_source = next(
+            obj[1]
+            for obj in objects
+            if isinstance(obj[1], Author) and obj[1].name == "Page Count Source"
+        )
+        book = next(obj[1] for obj in objects if isinstance(obj[1], Book))
+
+        # Verify the book was created correctly
+        assert book.title == "Test Book"
+        assert book.author == book_author
+        # The page_count should be the pk of page_count_source (an integer)
+        assert book.page_count == page_count_source.pk
+        assert isinstance(book.page_count, int)
 
     def test_load_with_arbitrary_attribute_paths(self):
         """Test that ResourceRef with arbitrary attribute paths like .name, .email work."""

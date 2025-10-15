@@ -205,9 +205,21 @@ class ModelRef:
     def __init__(
         self, content_type: str, attr_path: tuple[str, ...] = (), **lookup_kwargs
     ):
-        object.__setattr__(self, "ref_content_type", content_type)
-        object.__setattr__(self, "ref_lookup_kwargs", lookup_kwargs)
-        object.__setattr__(self, "ref_attr_path", attr_path)
+        object.__setattr__(self, "_ref_content_type", content_type)
+        object.__setattr__(self, "_ref_lookup_kwargs", lookup_kwargs)
+        object.__setattr__(self, "_ref_attr_path", attr_path)
+
+    @property
+    def ref_content_type(self) -> str:
+        return self._ref_content_type  # type: ignore
+
+    @property
+    def ref_attr_path(self) -> tuple[str, ...]:
+        return self._ref_attr_path  # type: ignore
+
+    @property
+    def ref_lookup_kwargs(self) -> dict[str, Any]:
+        return self._ref_lookup_kwargs  # type: ignore
 
     def __getattr__(self, name: str) -> "ModelRef":
         """
@@ -215,9 +227,13 @@ class ModelRef:
         """
         # Return new ModelRef with extended attribute path
         new_ref = ModelRef.__new__(ModelRef)
-        object.__setattr__(new_ref, "ref_content_type", self.ref_content_type)
-        object.__setattr__(new_ref, "ref_lookup_kwargs", self.ref_lookup_kwargs)
-        object.__setattr__(new_ref, "ref_attr_path", self.ref_attr_path + (name,))
+        # Access internal attributes via object.__getattribute__ to bypass __getattr__
+        content_type = object.__getattribute__(self, "_ref_content_type")
+        lookup_kwargs = object.__getattribute__(self, "_ref_lookup_kwargs")
+        attr_path = object.__getattribute__(self, "_ref_attr_path")
+        object.__setattr__(new_ref, "_ref_content_type", content_type)
+        object.__setattr__(new_ref, "_ref_lookup_kwargs", lookup_kwargs)
+        object.__setattr__(new_ref, "_ref_attr_path", attr_path + (name,))
         return new_ref
 
     def __eq__(self, other):
@@ -325,8 +341,16 @@ class ResourceRef:
     _prefix: ClassVar[str] = "isekai-resource-ref:\\"
 
     def __init__(self, key: Key, attr_path: tuple[str, ...] = ()):
-        object.__setattr__(self, "key", key)
-        object.__setattr__(self, "ref_attr_path", attr_path)
+        object.__setattr__(self, "_key", key)
+        object.__setattr__(self, "_ref_attr_path", attr_path)
+
+    @property
+    def key(self) -> Key:
+        return self._key  # type: ignore
+
+    @property
+    def ref_attr_path(self) -> tuple[str, ...]:
+        return self._ref_attr_path  # type: ignore
 
     def __getattr__(self, name: str) -> "ResourceRef":
         """
@@ -334,8 +358,11 @@ class ResourceRef:
         """
         # Return new ResourceRef with extended attribute path
         new_ref = ResourceRef.__new__(ResourceRef)
-        object.__setattr__(new_ref, "key", self.key)
-        object.__setattr__(new_ref, "ref_attr_path", self.ref_attr_path + (name,))
+        # Access internal attributes via object.__getattribute__ to bypass __getattr__
+        key = object.__getattribute__(self, "_key")
+        attr_path = object.__getattribute__(self, "_ref_attr_path")
+        object.__setattr__(new_ref, "_key", key)
+        object.__setattr__(new_ref, "_ref_attr_path", attr_path + (name,))
         return new_ref
 
     def __eq__(self, other):

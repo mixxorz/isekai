@@ -335,7 +335,6 @@ class BlobRef(BaseRef):
     _prefix = "isekai-blob-ref:\\"
 
 
-@dataclass(frozen=True, slots=True)
 class ResourceRef:
     """
     Represents a reference to a resource using a Key with optional attribute access.
@@ -345,22 +344,33 @@ class ResourceRef:
     Will be replaced by the resource's model instance (or attribute value) during Load.
     """
 
-    key: Key
-    attr_path: tuple[str, ...] = ()
     _prefix: ClassVar[str] = "isekai-resource-ref:\\"
+
+    def __init__(self, key: Key, attr_path: tuple[str, ...] = ()):
+        object.__setattr__(self, "_key", key)
+        object.__setattr__(self, "_attr_path", attr_path)
+
+    @property
+    def key(self) -> Key:
+        return self._key
 
     def __getattr__(self, name: str) -> "ResourceRef":
         """
         Capture attribute access and return a new ResourceRef with extended attr_path.
         """
-        # Avoid infinite recursion for dataclass special attributes
-        if name in ("key", "attr_path", "_prefix"):
-            raise AttributeError(
-                f"'{type(self).__name__}' object has no attribute '{name}'"
-            )
-
         # Return new ResourceRef with extended attribute path
-        return ResourceRef(key=self.key, attr_path=self.attr_path + (name,))
+        new_ref = ResourceRef.__new__(ResourceRef)
+        object.__setattr__(new_ref, "_key", self._key)
+        object.__setattr__(new_ref, "_attr_path", self._attr_path + (name,))
+        return new_ref
+
+    def __eq__(self, other):
+        if not isinstance(other, ResourceRef):
+            return False
+        return self._key == other._key and self._attr_path == other._attr_path
+
+    def __hash__(self):
+        return hash((self._key, self._attr_path))
 
     @classmethod
     def from_string(cls, refstr: str) -> "ResourceRef":
@@ -389,9 +399,9 @@ class ResourceRef:
         """
         Returns the string representation of the ResourceRef.
         """
-        base = f"{self._prefix}{self.key}"
-        if self.attr_path:
-            return f"{base}::{'.'.join(self.attr_path)}"
+        base = f"{self._prefix}{self._key}"
+        if self._attr_path:
+            return f"{base}::{'.'.join(self._attr_path)}"
         return base
 
 

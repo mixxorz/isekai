@@ -290,7 +290,7 @@ class ModelLoader(BaseLoader):
             if ref.key in key_to_object:
                 # Internal ref - get from key_to_object and traverse attr_path
                 value = key_to_object[ref.key]
-                for attr in ref.attr_path:
+                for attr in ref._attr_path:
                     value = getattr(value, attr)
                 return value
             else:

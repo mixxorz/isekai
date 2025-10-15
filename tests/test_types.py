@@ -59,7 +59,7 @@ class TestRefs:
         # ResourceRef from string
         ref = ResourceRef.from_string("isekai-resource-ref:\\user:123")
         assert ref.key == key
-        assert ref.attr_path == ()
+        assert ref._attr_path == ()
 
     def test_resource_ref_with_pk_attribute(self):
         key = Key(type="user", value="123")
@@ -71,7 +71,7 @@ class TestRefs:
         # ResourceRef from string with pk
         ref = ResourceRef.from_string("isekai-resource-ref:\\user:123::pk")
         assert ref.key == key
-        assert ref.attr_path == ("pk",)
+        assert ref._attr_path == ("pk",)
 
     def test_resource_ref_with_chained_attributes(self):
         key = Key(type="user", value="123")
@@ -83,7 +83,7 @@ class TestRefs:
         # ResourceRef from string with chained attributes
         ref = ResourceRef.from_string("isekai-resource-ref:\\user:123::group.name")
         assert ref.key == key
-        assert ref.attr_path == ("group", "name")
+        assert ref._attr_path == ("group", "name")
 
     def test_resource_ref_with_deep_chaining(self):
         key = Key(type="article", value="456")
@@ -97,7 +97,7 @@ class TestRefs:
             "isekai-resource-ref:\\article:456::author.group.name.slug"
         )
         assert ref.key == key
-        assert ref.attr_path == ("author", "group", "name", "slug")
+        assert ref._attr_path == ("author", "group", "name", "slug")
 
     def test_resource_ref_invalid_string(self):
         # Invalid format should raise ValueError

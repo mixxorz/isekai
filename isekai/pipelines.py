@@ -518,10 +518,10 @@ class Pipeline:
                 if str(ref.key) in key_to_obj:
                     obj = key_to_obj[str(ref.key)]
                     # PK optimization: return pk directly without fetching if attr_path is ("pk",)
-                    if ref._attr_path == ("pk",):
+                    if ref.ref_attr_path == ("pk",):
                         return obj.pk
                     # Traverse attribute path
-                    for attr in ref._attr_path:
+                    for attr in ref.ref_attr_path:
                         obj = getattr(obj, attr)
                     return obj
 
@@ -529,22 +529,22 @@ class Pipeline:
                 # already been loaded
                 if resource := Resource.objects.filter(key=str(ref.key)).first():
                     # PK optimization: return target_object_id directly if attr_path is ("pk",)
-                    if ref._attr_path == ("pk",) and resource.target_object_id:
+                    if ref.ref_attr_path == ("pk",) and resource.target_object_id:
                         return resource.target_object_id
                     # Otherwise fetch target_object and traverse
                     if resource.target_object:
                         obj = resource.target_object
-                        for attr in ref._attr_path:
+                        for attr in ref.ref_attr_path:
                             obj = getattr(obj, attr)
                         return obj
 
             # If it's a ModelRef, fetch from DB using content_type and lookup_kwargs
             elif type(ref) is ModelRef:
-                app_label, model_name = ref._content_type.split(".", 1)
+                app_label, model_name = ref.ref_content_type.split(".", 1)
                 model_class = apps.get_model(app_label, model_name)
-                obj = model_class.objects.get(**ref._lookup_kwargs)
+                obj = model_class.objects.get(**ref.ref_lookup_kwargs)
                 # Traverse attribute path
-                for attr in ref._attr_path:
+                for attr in ref.ref_attr_path:
                     obj = getattr(obj, attr)
                 return obj
 

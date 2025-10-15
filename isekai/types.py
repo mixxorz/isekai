@@ -245,9 +245,9 @@ class ModelRef:
     def __init__(
         self, content_type: str, attr_path: tuple[str, ...] = (), **lookup_kwargs
     ):
-        object.__setattr__(self, "_content_type", content_type)
-        object.__setattr__(self, "_lookup_kwargs", lookup_kwargs)
-        object.__setattr__(self, "_attr_path", attr_path)
+        object.__setattr__(self, "ref_content_type", content_type)
+        object.__setattr__(self, "ref_lookup_kwargs", lookup_kwargs)
+        object.__setattr__(self, "ref_attr_path", attr_path)
 
     def __getattr__(self, name: str) -> "ModelRef":
         """
@@ -255,26 +255,26 @@ class ModelRef:
         """
         # Return new ModelRef with extended attribute path
         new_ref = ModelRef.__new__(ModelRef)
-        object.__setattr__(new_ref, "_content_type", self._content_type)
-        object.__setattr__(new_ref, "_lookup_kwargs", self._lookup_kwargs)
-        object.__setattr__(new_ref, "_attr_path", self._attr_path + (name,))
+        object.__setattr__(new_ref, "ref_content_type", self.ref_content_type)
+        object.__setattr__(new_ref, "ref_lookup_kwargs", self.ref_lookup_kwargs)
+        object.__setattr__(new_ref, "ref_attr_path", self.ref_attr_path + (name,))
         return new_ref
 
     def __eq__(self, other):
         if not isinstance(other, ModelRef):
             return False
         return (
-            self._content_type == other._content_type
-            and self._lookup_kwargs == other._lookup_kwargs
-            and self._attr_path == other._attr_path
+            self.ref_content_type == other.ref_content_type
+            and self.ref_lookup_kwargs == other.ref_lookup_kwargs
+            and self.ref_attr_path == other.ref_attr_path
         )
 
     def __hash__(self):
         return hash(
             (
-                self._content_type,
-                tuple(sorted(self._lookup_kwargs.items())),
-                self._attr_path,
+                self.ref_content_type,
+                tuple(sorted(self.ref_lookup_kwargs.items())),
+                self.ref_attr_path,
             )
         )
 
@@ -316,11 +316,11 @@ class ModelRef:
         Returns the string representation of the ModelRef.
         """
         # Convert lookup_kwargs to query string
-        query_string = urlencode(self._lookup_kwargs)
-        base = f"{self._prefix}{self._content_type}?{query_string}"
+        query_string = urlencode(self.ref_lookup_kwargs)
+        base = f"{self._prefix}{self.ref_content_type}?{query_string}"
 
-        if self._attr_path:
-            return f"{base}::{'.'.join(self._attr_path)}"
+        if self.ref_attr_path:
+            return f"{base}::{'.'.join(self.ref_attr_path)}"
         return base
 
 
@@ -347,12 +347,8 @@ class ResourceRef:
     _prefix: ClassVar[str] = "isekai-resource-ref:\\"
 
     def __init__(self, key: Key, attr_path: tuple[str, ...] = ()):
-        object.__setattr__(self, "_key", key)
-        object.__setattr__(self, "_attr_path", attr_path)
-
-    @property
-    def key(self) -> Key:
-        return self._key
+        object.__setattr__(self, "key", key)
+        object.__setattr__(self, "ref_attr_path", attr_path)
 
     def __getattr__(self, name: str) -> "ResourceRef":
         """
@@ -360,17 +356,17 @@ class ResourceRef:
         """
         # Return new ResourceRef with extended attribute path
         new_ref = ResourceRef.__new__(ResourceRef)
-        object.__setattr__(new_ref, "_key", self._key)
-        object.__setattr__(new_ref, "_attr_path", self._attr_path + (name,))
+        object.__setattr__(new_ref, "key", self.key)
+        object.__setattr__(new_ref, "ref_attr_path", self.ref_attr_path + (name,))
         return new_ref
 
     def __eq__(self, other):
         if not isinstance(other, ResourceRef):
             return False
-        return self._key == other._key and self._attr_path == other._attr_path
+        return self.key == other.key and self.ref_attr_path == other.ref_attr_path
 
     def __hash__(self):
-        return hash((self._key, self._attr_path))
+        return hash((self.key, self.ref_attr_path))
 
     @classmethod
     def from_string(cls, refstr: str) -> "ResourceRef":
@@ -399,9 +395,9 @@ class ResourceRef:
         """
         Returns the string representation of the ResourceRef.
         """
-        base = f"{self._prefix}{self._key}"
-        if self._attr_path:
-            return f"{base}::{'.'.join(self._attr_path)}"
+        base = f"{self._prefix}{self.key}"
+        if self.ref_attr_path:
+            return f"{base}::{'.'.join(self.ref_attr_path)}"
         return base
 
 

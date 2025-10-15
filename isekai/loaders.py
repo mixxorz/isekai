@@ -185,13 +185,13 @@ class ModelLoader(BaseLoader):
         }
 
         # Add _id accessor fields for FK/OneToOne fields so we can look them up
-        fk_fields = [
-            f
-            for f in model_fields.values()
-            if isinstance(f, models.ForeignKey | models.OneToOneField | ParentalKey)
-        ]
-        for fk_field in fk_fields:
-            model_fields[f"{fk_field.name}_id"] = fk_field
+        fk_fields = {
+            field_name: field
+            for field_name, field in model_fields.items()
+            if isinstance(field, models.ForeignKey | models.OneToOneField | ParentalKey)
+        }
+        for field_name, field in fk_fields.items():
+            model_fields[f"{field_name}_id"] = field
 
         obj_fields = {}
 

@@ -18,6 +18,7 @@ from isekai.types import (
     ModelRef,
     ResourceRef,
     Spec,
+    ref,
 )
 from tests.testapp.models import (
     Article,
@@ -1080,6 +1081,371 @@ class TestModelLoader:
         assert article.title == "Jane Smith"  # Should be author's name
         assert article.content == "jane@example.com"  # Should be author's email
         assert article.author == author  # FK should be resolved correctly
+
+    def test_load_with_string_ref_single_resourceref(self):
+        """Test loading with a single ResourceRef embedded in a string field."""
+
+        def resolver(ref_arg):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref_arg}")
+
+        loader = ModelLoader()
+
+        # Create author spec
+        author_key = Key(type="author", value="string_ref_author")
+        author_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "Jane Smith",
+                "email": "jane@example.com",
+            },
+        )
+
+        # Create article spec with string that contains ResourceRef
+        article_key = Key(type="article", value="string_ref_article")
+        article_spec = Spec(
+            content_type="testapp.Article",
+            attributes={
+                "title": f"Article by {ref(ResourceRef(author_key).name)}",
+                "content": "Some content",
+                "author_id": ResourceRef(author_key).pk,
+            },
+        )
+
+        objects = loader.load(
+            [(author_key, author_spec), (article_key, article_spec)], resolver
+        )
+
+        assert len(objects) == 2
+
+        # Find author and article in results
+        author = next(obj[1] for obj in objects if isinstance(obj[1], Author))
+        article = next(obj[1] for obj in objects if isinstance(obj[1], Article))
+
+        # Verify the string ref was resolved
+        assert author.name == "Jane Smith"
+        assert article.title == "Article by Jane Smith"  # Ref should be resolved
+        assert article.author == author
+
+    def test_load_with_string_ref_multiple_resourcerefs(self):
+        """Test loading with multiple ResourceRefs embedded in a single string field."""
+
+        def resolver(ref_arg):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref_arg}")
+
+        loader = ModelLoader()
+
+        # Create author spec
+        author_key = Key(type="author", value="multi_ref_author")
+        author_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "Bob Writer",
+                "email": "bob@example.com",
+            },
+        )
+
+        # Create article spec with string containing multiple refs
+        article_key = Key(type="article", value="multi_ref_article")
+        article_spec = Spec(
+            content_type="testapp.Article",
+            attributes={
+                "title": f"Contact {ref(ResourceRef(author_key).name)} at {ref(ResourceRef(author_key).email)}",
+                "content": "Article content",
+                "author_id": ResourceRef(author_key).pk,
+            },
+        )
+
+        objects = loader.load(
+            [(author_key, author_spec), (article_key, article_spec)], resolver
+        )
+
+        assert len(objects) == 2
+
+        # Find author and article
+        author = next(obj[1] for obj in objects if isinstance(obj[1], Author))
+        article = next(obj[1] for obj in objects if isinstance(obj[1], Article))
+
+        # Verify both refs were resolved in the string
+        assert author.name == "Bob Writer"
+        assert author.email == "bob@example.com"
+        assert article.title == "Contact Bob Writer at bob@example.com"
+        assert article.author == author
+
+    def test_load_with_string_ref_modelref(self):
+        """Test loading with ModelRef embedded in string field."""
+        # Create existing author in database
+        existing_author = Author.objects.create(
+            name="Existing Author",
+            email="existing@example.com",
+        )
+
+        def resolver(ref_arg):
+            if isinstance(ref_arg, ModelRef):
+                if (
+                    ref_arg.ref_content_type == "testapp.Author"
+                    and ref_arg.ref_lookup_kwargs.get("pk") == str(existing_author.pk)
+                ):
+                    # Resolve ModelRef with attribute path
+                    obj = existing_author
+                    for attr in ref_arg.ref_attr_path:
+                        obj = getattr(obj, attr)
+                    return obj
+            raise AssertionError(f"Unexpected ref: {ref_arg}")
+
+        loader = ModelLoader()
+
+        # Create article spec with string that contains ModelRef to existing author
+        article_key = Key(type="article", value="modelref_string_article")
+        article_spec = Spec(
+            content_type="testapp.Article",
+            attributes={
+                "title": f"By {ref(ModelRef('testapp.Author', pk=existing_author.pk).name)}",
+                "content": "Article content",
+                "author_id": existing_author.pk,
+            },
+        )
+
+        objects = loader.load([(article_key, article_spec)], resolver)
+
+        assert len(objects) == 1
+        article = objects[0][1]
+        assert isinstance(article, Article)
+        assert article.title == "By Existing Author"  # ModelRef should be resolved
+        assert article.author == existing_author
+
+    def test_load_with_string_ref_chained_attributes(self):
+        """Test loading with ResourceRef that has chained attribute access in string."""
+
+        def resolver(ref_arg):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref_arg}")
+
+        loader = ModelLoader()
+
+        # Create author spec
+        author_key = Key(type="author", value="chained_author")
+        author_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "Chained Author",
+                "email": "chained@example.com",
+            },
+        )
+
+        # Create profile spec
+        profile_key = Key(type="profile", value="chained_profile")
+        profile_spec = Spec(
+            content_type="testapp.AuthorProfile",
+            attributes={
+                "author_id": ResourceRef(author_key).pk,
+                "website": "https://chained.example.com",
+                "twitter_handle": f"Follow {ref(ResourceRef(author_key).name)} on Twitter",
+            },
+        )
+
+        objects = loader.load(
+            [(author_key, author_spec), (profile_key, profile_spec)], resolver
+        )
+
+        assert len(objects) == 2
+
+        # Find objects
+        author = next(obj[1] for obj in objects if isinstance(obj[1], Author))
+        profile = next(obj[1] for obj in objects if isinstance(obj[1], AuthorProfile))
+
+        # Verify chained attribute access was resolved
+        assert profile.twitter_handle == "Follow Chained Author on Twitter"
+        assert profile.author == author
+
+    def test_load_with_string_ref_no_refs(self):
+        """Test that strings without refs are not modified."""
+
+        def resolver(ref_arg):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref_arg}")
+
+        loader = ModelLoader()
+
+        # Create author spec
+        author_key = Key(type="author", value="no_ref_author")
+        author_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "No Ref Author",
+                "email": "noref@example.com",
+            },
+        )
+
+        # Create article spec with normal strings (no refs)
+        article_key = Key(type="article", value="no_ref_article")
+        article_spec = Spec(
+            content_type="testapp.Article",
+            attributes={
+                "title": "Normal Title Without Refs",
+                "content": "This is normal content without any references",
+                "author_id": ResourceRef(author_key).pk,
+            },
+        )
+
+        objects = loader.load(
+            [(author_key, author_spec), (article_key, article_spec)], resolver
+        )
+
+        assert len(objects) == 2
+
+        # Find article
+        article = next(obj[1] for obj in objects if isinstance(obj[1], Article))
+
+        # Verify strings are unchanged
+        assert article.title == "Normal Title Without Refs"
+        assert article.content == "This is normal content without any references"
+
+    def test_load_with_string_ref_different_string_field_types(self):
+        """Test that string ref resolution works with different string field types."""
+
+        def resolver(ref_arg):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref_arg}")
+
+        loader = ModelLoader()
+
+        # Create author spec
+        author_key = Key(type="author", value="field_type_author")
+        author_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "Field Type Author",
+                "email": f"contact-{ref(ResourceRef(author_key).name)}@example.com",  # EmailField with ref
+            },
+        )
+
+        # Create profile spec
+        profile_key = Key(type="profile", value="field_type_profile")
+        profile_spec = Spec(
+            content_type="testapp.AuthorProfile",
+            attributes={
+                "author_id": ResourceRef(author_key).pk,
+                "website": f"https://{ref(ResourceRef(author_key).name)}.example.com",  # URLField with ref
+                "twitter_handle": f"@{ref(ResourceRef(author_key).name)}",  # CharField with ref
+            },
+        )
+
+        objects = loader.load(
+            [(author_key, author_spec), (profile_key, profile_spec)], resolver
+        )
+
+        assert len(objects) == 2
+
+        # Find objects (need to get the author's actual name since it references itself)
+        # The author.name is "Field Type Author" but email uses a ref to itself which creates
+        # a circular reference during creation. Let's verify the final resolved values.
+        author = next(obj[1] for obj in objects if isinstance(obj[1], Author))
+        profile = next(obj[1] for obj in objects if isinstance(obj[1], AuthorProfile))
+
+        # Verify different field types all resolved refs correctly
+        assert author.name == "Field Type Author"
+        # Email field should have the ref resolved
+        assert author.email == "contact-Field Type Author@example.com"
+        # URLField should have ref resolved
+        assert profile.website == "https://Field Type Author.example.com"
+        # CharField should have ref resolved
+        assert profile.twitter_handle == "@Field Type Author"
+
+    def test_load_with_string_ref_external_resourceref(self):
+        """Test string ref resolution with external ResourceRef resolved via resolver."""
+        # Create existing author in database
+        existing_author = Author.objects.create(
+            name="External String Ref Author",
+            email="external@example.com",
+        )
+
+        def resolver(ref_arg):
+            if isinstance(ref_arg, ResourceRef):
+                if (
+                    ref_arg.key.type == "author"
+                    and ref_arg.key.value == "external_author"
+                ):
+                    # Resolve external ResourceRef with attribute path
+                    obj = existing_author
+                    for attr in ref_arg.ref_attr_path:
+                        obj = getattr(obj, attr)
+                    return obj
+            raise AssertionError(f"Unexpected ref: {ref_arg}")
+
+        loader = ModelLoader()
+
+        # Create article that references external author in string
+        article_key = Key(type="article", value="external_string_article")
+        external_author_key = Key(type="author", value="external_author")
+        article_spec = Spec(
+            content_type="testapp.Article",
+            attributes={
+                "title": f"Written by {ref(ResourceRef(external_author_key).name)}",
+                "content": "Article content",
+                "author_id": existing_author.pk,
+            },
+        )
+
+        objects = loader.load([(article_key, article_spec)], resolver)
+
+        assert len(objects) == 1
+        article = objects[0][1]
+        assert isinstance(article, Article)
+        assert article.title == "Written by External String Ref Author"
+        assert article.author == existing_author
+
+    def test_load_with_string_ref_mixed_with_literal_text(self):
+        """Test that refs in strings can be mixed with literal text, punctuation, etc."""
+
+        def resolver(ref_arg):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref_arg}")
+
+        loader = ModelLoader()
+
+        # Create two authors
+        author1_key = Key(type="author", value="author1")
+        author1_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "Alice",
+                "email": "alice@example.com",
+            },
+        )
+
+        author2_key = Key(type="author", value="author2")
+        author2_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "Bob",
+                "email": "bob@example.com",
+            },
+        )
+
+        # Create article with complex string mixing refs and literals
+        article_key = Key(type="article", value="mixed_text_article")
+        article_spec = Spec(
+            content_type="testapp.Article",
+            attributes={
+                "title": f"Co-authored by {ref(ResourceRef(author1_key).name)} & {ref(ResourceRef(author2_key).name)}!",
+                "content": f"Contact: {ref(ResourceRef(author1_key).email)} or {ref(ResourceRef(author2_key).email)}.",
+                "author_id": ResourceRef(author1_key).pk,
+            },
+        )
+
+        objects = loader.load(
+            [
+                (author1_key, author1_spec),
+                (author2_key, author2_spec),
+                (article_key, article_spec),
+            ],
+            resolver,
+        )
+
+        assert len(objects) == 3
+
+        # Find article
+        article = next(obj[1] for obj in objects if isinstance(obj[1], Article))
+
+        # Verify complex string resolution
+        assert article.title == "Co-authored by Alice & Bob!"
+        assert article.content == "Contact: alice@example.com or bob@example.com."
 
 
 @pytest.mark.django_db

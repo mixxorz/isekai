@@ -1,3 +1,4 @@
+import re
 import uuid
 
 from django.apps import apps
@@ -63,6 +64,12 @@ class ModelLoader(BaseLoader):
             # Update JSON fields with resolved refs
             for key, spec in specs:
                 self._update_json_fields(
+                    key_to_object[key], spec, key_to_object, resolver
+                )
+
+            # Update string fields with resolved ref interpolations
+            for key, spec in specs:
+                self._update_string_fields(
                     key_to_object[key], spec, key_to_object, resolver
                 )
 
@@ -268,15 +275,104 @@ class ModelLoader(BaseLoader):
         if updated:
             obj.save()
 
+    def _update_string_fields(self, obj, spec, key_to_object, resolver):
+        """Update string fields with resolved ref interpolations."""
+        string_field_types = (
+            "CharField",
+            "TextField",
+            "EmailField",
+            "URLField",
+            "SlugField",
+        )
+        string_fields = [
+            f
+            for f in obj._meta.get_fields()
+            if f.get_internal_type() in string_field_types
+        ]
+
+        updated = False
+        for field in string_fields:
+            if field.name in spec.attributes:
+                field_value = spec.attributes[field.name]
+                # Check if it's a string with refs
+                if isinstance(field_value, str) and self._has_refs(field_value):
+                    resolved_value = self._resolve_string_refs(
+                        field_value, key_to_object, resolver
+                    )
+                    if resolved_value != field_value:
+                        setattr(obj, field.name, resolved_value)
+                        updated = True
+
+        if updated:
+            obj.save()
+
     def _has_refs(self, data):
         """Check if data contains reference objects."""
         if isinstance(data, BlobRef | ResourceRef | ModelRef):
             return True
+        elif isinstance(data, str):
+            return bool(self._find_refs_in_string(data))
         elif isinstance(data, dict):
             return any(self._has_refs(v) for v in data.values())
         elif isinstance(data, list):
             return any(self._has_refs(item) for item in data)
         return False
+
+    def _find_refs_in_string(
+        self, text: str
+    ) -> list[tuple[str, ResourceRef | ModelRef | BlobRef]]:
+        """
+        Find all refs embedded in a string with %REFEND% delimiter.
+
+        Returns list of (ref_string_with_delimiter, ref_object) tuples.
+        Example: "Hello isekai-resource-ref:\\gen:user1::name%REFEND%!"
+                 -> [("isekai-resource-ref:\\gen:user1::name%REFEND%", ResourceRef(...))]
+        """
+        pattern = r"(isekai-(?:resource-ref|model-ref|blob-ref):\\[^%]+)%REFEND%"
+        refs = []
+
+        for match in re.finditer(pattern, text):
+            ref_string = match.group(1)  # The ref without %REFEND%
+            full_match = match.group(0)  # The ref with %REFEND%
+
+            # Parse the ref string
+            try:
+                if ref_string.startswith("isekai-resource-ref:\\"):
+                    ref_obj = ResourceRef.from_string(ref_string)
+                    refs.append((full_match, ref_obj))
+                elif ref_string.startswith("isekai-model-ref:\\"):
+                    ref_obj = ModelRef.from_string(ref_string)
+                    refs.append((full_match, ref_obj))
+                elif ref_string.startswith("isekai-blob-ref:\\"):
+                    ref_obj = BlobRef.from_string(ref_string)
+                    refs.append((full_match, ref_obj))
+            except ValueError:
+                # Invalid ref format - skip it
+                pass
+
+        return refs
+
+    def _resolve_string_refs(self, text: str, key_to_object, resolver) -> str:
+        """
+        Resolve all refs embedded in a string and replace them with resolved values.
+
+        Example:
+            Input: "Hello isekai-resource-ref:\\gen:user1::name%REFEND%!"
+            Output: "Hello John!"
+        """
+        refs = self._find_refs_in_string(text)
+
+        # Replace each ref with its resolved value
+        resolved_text = text
+        for ref_string_with_delimiter, ref_obj in refs:
+            # Resolve the ref (handles both ResourceRef and ModelRef)
+            resolved_value = self._resolve_ref(ref_obj, key_to_object, resolver)
+            # Convert to string (in case it's not already)
+            resolved_text = resolved_text.replace(
+                ref_string_with_delimiter, str(resolved_value)
+            )
+
+        return resolved_text
 
     def _resolve_ref(self, ref, key_to_object, resolver):
         """Resolve a single ResourceRef or ModelRef to its final value.

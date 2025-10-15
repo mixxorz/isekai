@@ -444,3 +444,16 @@ class ExtractError(Exception):
 
 class TransformError(Exception):
     pass
+
+
+def ref(reference: "ResourceRef | ModelRef | BlobRef") -> str:
+    """
+    Mark end of reference for safe string interpolation.
+
+    Use this when embedding refs in f-strings to clearly mark where the ref ends:
+        f"Hello {ref(ResourceRef(key).name)}!"
+
+    This wraps the ref with an end delimiter (%REFEND%) so the loader can
+    accurately parse and replace it during the load phase.
+    """
+    return f"{reference}%REFEND%"

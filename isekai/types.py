@@ -224,15 +224,107 @@ class PkRef(BaseRef):
     _prefix = "isekai-pk-ref:\\"
 
 
-@dataclass(frozen=True, slots=True)
-class ModelRef(BaseRef):
+class ModelRef:
     """
-    Represents a reference to a resource using a Key.
+    Represents a reference to an existing database model using content_type and lookup kwargs.
 
-    Will be replaced by the resource's model instance during Load.
+    Supports lazy attribute chaining: ModelRef("app.Model", pk=42).group.name
+
+    Will fetch the model from the database and resolve to the instance (or attribute value) during Load.
     """
 
-    _prefix = "isekai-model-ref:\\"
+    _prefix: ClassVar[str] = "isekai-model-ref:\\"
+
+    def __init__(
+        self, content_type: str, attr_path: tuple[str, ...] = (), **lookup_kwargs
+    ):
+        object.__setattr__(self, "content_type", content_type)
+        object.__setattr__(self, "lookup_kwargs", lookup_kwargs)
+        object.__setattr__(self, "attr_path", attr_path)
+
+    def __getattr__(self, name: str) -> "ModelRef":
+        """
+        Capture attribute access and return a new ModelRef with extended attr_path.
+        """
+        # Avoid infinite recursion for special attributes
+        if name in ("content_type", "lookup_kwargs", "attr_path", "_prefix"):
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{name}'"
+            )
+
+        # Return new ModelRef with extended attribute path
+        new_ref = ModelRef.__new__(ModelRef)
+        object.__setattr__(new_ref, "content_type", self.content_type)
+        object.__setattr__(new_ref, "lookup_kwargs", self.lookup_kwargs)
+        object.__setattr__(new_ref, "attr_path", self.attr_path + (name,))
+        return new_ref
+
+    def __eq__(self, other):
+        if not isinstance(other, ModelRef):
+            return False
+        return (
+            self.content_type == other.content_type
+            and self.lookup_kwargs == other.lookup_kwargs
+            and self.attr_path == other.attr_path
+        )
+
+    def __hash__(self):
+        return hash(
+            (
+                self.content_type,
+                tuple(sorted(self.lookup_kwargs.items())),
+                self.attr_path,
+            )
+        )
+
+    @classmethod
+    def from_string(cls, refstr: str) -> "ModelRef":
+        """
+        Parses a string into a ModelRef object.
+        Format: "isekai-model-ref:\\app.Model?pk=42&slug=foo::attr1.attr2"
+        """
+        from urllib.parse import parse_qs, unquote
+
+        if not refstr.startswith(cls._prefix):
+            raise ValueError(f"Invalid ref: {refstr}")
+
+        # Remove prefix
+        rest = refstr.removeprefix(cls._prefix)
+
+        # Check if there's an attribute path
+        if "::" in rest:
+            query_part, attr_str = rest.split("::", 1)
+            attr_path = tuple(attr_str.split("."))
+        else:
+            query_part = rest
+            attr_path = ()
+
+        # Split content_type and query string
+        if "?" in query_part:
+            content_type, query_string = query_part.split("?", 1)
+            # Parse query string - parse_qs returns lists, we want single values
+            parsed = parse_qs(query_string)
+            lookup_kwargs = {k: unquote(v[0]) for k, v in parsed.items()}
+        else:
+            raise ValueError(
+                f"Invalid ModelRef format (missing query params): {refstr}"
+            )
+
+        return cls(content_type=content_type, attr_path=attr_path, **lookup_kwargs)
+
+    def __str__(self) -> str:
+        """
+        Returns the string representation of the ModelRef.
+        """
+        from urllib.parse import urlencode
+
+        # Convert lookup_kwargs to query string
+        query_string = urlencode(self.lookup_kwargs)
+        base = f"{self._prefix}{self.content_type}?{query_string}"
+
+        if self.attr_path:
+            return f"{base}::{'.'.join(self.attr_path)}"
+        return base
 
 
 @dataclass(frozen=True, slots=True)

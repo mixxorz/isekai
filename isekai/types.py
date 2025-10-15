@@ -117,7 +117,7 @@ class Spec:
 
     def to_dict(self):
         def serialize_value(value):
-            if isinstance(value, BaseRef):
+            if isinstance(value, BaseRef | ResourceRef | ModelRef):
                 return str(value)
             elif isinstance(value, dict):
                 return {k: serialize_value(v) for k, v in value.items()}
@@ -136,9 +136,11 @@ class Spec:
     def from_dict(cls, data):
         def deserialize_value(value):
             if isinstance(value, str):
-                # Try to parse as BlobRef first, then ModelRef, then PkRef
+                # Try to parse as various ref types
                 try:
-                    if value.startswith("isekai-blob-ref:\\"):
+                    if value.startswith("isekai-resource-ref:\\"):
+                        return ResourceRef.from_string(value)
+                    elif value.startswith("isekai-blob-ref:\\"):
                         return BlobRef.from_string(value)
                     elif value.startswith("isekai-model-ref:\\"):
                         return ModelRef.from_string(value)
@@ -162,7 +164,7 @@ class Spec:
             },
         )
 
-    def find_refs(self) -> list["BaseRef"]:
+    def find_refs(self) -> list["BaseRef | ResourceRef | ModelRef"]:
         """
         Find all Refs in the attributes dict.
         """
@@ -170,7 +172,7 @@ class Spec:
         seen = set()
 
         def collect_refs(value):
-            if isinstance(value, BaseRef):
+            if isinstance(value, BaseRef | ResourceRef | ModelRef):
                 ref_str = str(value)
                 if ref_str not in seen:
                     seen.add(ref_str)

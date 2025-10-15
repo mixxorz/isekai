@@ -167,12 +167,16 @@ class Spec:
     def find_refs(self) -> list["BaseRef | ResourceRef | ModelRef"]:
         """
         Find all Refs in the attributes dict.
+
+        Only BlobRef and ResourceRef create resource dependencies.
+        ModelRef doesn't create dependencies since it references existing DB objects directly.
         """
         refs = []
         seen = set()
 
         def collect_refs(value):
-            if isinstance(value, BaseRef | ResourceRef | ModelRef):
+            if isinstance(value, BaseRef | ResourceRef):
+                # Only collect BlobRef and ResourceRef, not ModelRef
                 ref_str = str(value)
                 if ref_str not in seen:
                     seen.add(ref_str)

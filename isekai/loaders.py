@@ -171,7 +171,11 @@ class ModelLoader(BaseLoader):
                             pending_fks.append((key, field_name, field_value.key))
                         else:
                             # External ref - resolve immediately
-                            obj_fields[field_name] = resolver(field_value)
+                            # Resolver may return a model instance, extract PK
+                            resolved = resolver(field_value)
+                            obj_fields[field_name] = (
+                                resolved.pk if hasattr(resolved, "pk") else resolved
+                            )
                     else:
                         # ResourceRef in FK field (e.g., author) - Django expects model instance
                         if field_value.key in key_to_spec:
@@ -262,14 +266,21 @@ class ModelLoader(BaseLoader):
         return False
 
     def _resolve_refs(self, data, key_to_object, resolver):
-        """Recursively resolve ResourceRef and ModelRef objects in nested data."""
+        """Recursively resolve ResourceRef and ModelRef objects in nested data.
+
+        For JSON fields, refs are resolved to their PK values (not model instances)
+        since JSON fields can only store serializable data.
+        """
         if isinstance(data, ResourceRef):
-            return (
+            # Resolve to model instance first, then extract PK
+            obj = (
                 key_to_object[data.key] if data.key in key_to_object else resolver(data)
             )
+            return obj.pk
         elif isinstance(data, ModelRef):
-            # ModelRef always references external objects
-            return resolver(data)
+            # ModelRef always references external objects, resolve to PK
+            obj = resolver(data)
+            return obj.pk
         elif isinstance(data, dict):
             return {
                 k: self._resolve_refs(v, key_to_object, resolver)

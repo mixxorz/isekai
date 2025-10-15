@@ -3,6 +3,7 @@ import random
 import time
 from typing import Any, overload
 
+from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
 from django.db import transaction
@@ -497,8 +498,6 @@ class Pipeline:
         def resolver(
             ref: BlobRef | ResourceRef | ModelRef,
         ) -> FileProxy | Model | int | str:
-            from django.apps import apps
-
             # If it's a BlobRef, we must return a FileProxy
             if type(ref) is BlobRef:
                 if str(ref.key) in key_to_obj:

@@ -4,6 +4,7 @@ from django.apps import apps
 from django.core.files import File
 from django.core.files.base import ContentFile
 from django.db import connection, models, transaction
+from django.utils import timezone
 from modelcluster.fields import ParentalKey, ParentalManyToManyField
 
 from isekai.types import BaseRef, BlobRef, Key, ModelRef, Resolver, ResourceRef, Spec
@@ -116,8 +117,6 @@ class ModelLoader(BaseLoader):
 
     def _get_temp_value_for_field(self, field, ref_key, key_to_temp_fk):
         """Generate appropriate temporary value based on field type."""
-        from django.utils import timezone
-
         field_type = field.get_internal_type()
 
         # FK fields use the temp PK mapping

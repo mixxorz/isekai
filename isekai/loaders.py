@@ -34,8 +34,7 @@ class ModelLoader(BaseLoader):
         # Track state
         key_to_object = {}
         created_objects = []
-        pending_fks = []  # For ResourceRef in _id fields
-        pending_fk_instances = []  # For ResourceRef in FK fields
+        pending_refs = []  # For all ResourceRef to internal resources
         pending_m2ms = []
 
         with transaction.atomic(), connection.constraint_checks_disabled():
@@ -47,22 +46,23 @@ class ModelLoader(BaseLoader):
                     key_to_model[key],
                     key_to_spec,
                     key_to_temp_fk,
-                    pending_fks,
-                    pending_fk_instances,
+                    pending_refs,
                     pending_m2ms,
                     resolver,
                 )
                 key_to_object[key] = obj
                 created_objects.append((key, obj))
 
-            # Fix FK ID references (PkRef in _id fields)
-            for obj_key, field_name, ref_key in pending_fks:
-                setattr(key_to_object[obj_key], field_name, key_to_object[ref_key].pk)
-                key_to_object[obj_key].save()
-
-            # Fix FK instance references (ModelRef in FK fields)
-            for obj_key, field_name, ref_key in pending_fk_instances:
-                setattr(key_to_object[obj_key], field_name, key_to_object[ref_key])
+            # Resolve all pending internal ResourceRef
+            for obj_key, field_name, ref in pending_refs:
+                # Get the referenced object
+                referenced_obj = key_to_object[ref.key]
+                # Traverse attribute path if present
+                value = referenced_obj
+                for attr in ref.attr_path:
+                    value = getattr(value, attr)
+                # Set the field value
+                setattr(key_to_object[obj_key], field_name, value)
                 key_to_object[obj_key].save()
 
             # Update JSON fields with resolved refs
@@ -121,27 +121,17 @@ class ModelLoader(BaseLoader):
         model_class,
         key_to_spec,
         key_to_temp_fk,
-        pending_fks,
-        pending_fk_instances,
+        pending_refs,
         pending_m2ms,
         resolver,
     ):
         """Create a single object with processed fields."""
-        # Build comprehensive field mapping including _id fields for FKs
+        # Build field mapping
         model_fields = {
             f.name: f
             for f in model_class._meta.get_fields()
             if hasattr(f, "contribute_to_class")
         }
-
-        # Add _id mappings for FK/OneToOne fields
-        fk_fields = {
-            field_name: field
-            for field_name, field in model_fields.items()
-            if isinstance(field, models.ForeignKey | models.OneToOneField | ParentalKey)
-        }
-        for field_name, field in fk_fields.items():
-            model_fields[f"{field_name}_id"] = field
 
         obj_fields = {}
 
@@ -160,36 +150,16 @@ class ModelLoader(BaseLoader):
                     obj_fields[field_name] = File(ContentFile(f.read()), file_ref.name)
 
             elif isinstance(field_value, ResourceRef):
-                if field and isinstance(
-                    field, models.ForeignKey | models.OneToOneField | ParentalKey
-                ):
-                    if field_name.endswith("_id"):
-                        # ResourceRef in FK ID field (e.g., author_id) - use PK value directly
-                        if field_value.key in key_to_spec:
-                            # Internal ref - use temp value, schedule for update
-                            obj_fields[field_name] = key_to_temp_fk[field_value.key]
-                            pending_fks.append((key, field_name, field_value.key))
-                        else:
-                            # External ref - resolve immediately
-                            # Resolver may return a model instance, extract PK
-                            resolved = resolver(field_value)
-                            obj_fields[field_name] = (
-                                resolved.pk if hasattr(resolved, "pk") else resolved
-                            )
-                    else:
-                        # ResourceRef in FK field (e.g., author) - Django expects model instance
-                        if field_value.key in key_to_spec:
-                            # Internal ref - will be resolved after all objects are created
-                            pending_fk_instances.append(
-                                (key, field_name, field_value.key)
-                            )
-                            # Don't set the field now - will be set later
-                        else:
-                            # External ref - resolve immediately to model instance
-                            obj_fields[field_name] = resolver(field_value)
+                if field_value.key in key_to_spec:
+                    # Internal ref - defer resolution until after all objects are created
+                    if field_value.attr_path and field_value.attr_path == ("pk",):
+                        # For .pk specifically, we can use temp PK for FK constraints
+                        obj_fields[field_name] = key_to_temp_fk[field_value.key]
+                    # Mark for later resolution regardless
+                    pending_refs.append((key, field_name, field_value))
                 else:
-                    # ResourceRef in non-FK field (likely JSON) - skip for now
-                    pass
+                    # External ref - resolve immediately
+                    obj_fields[field_name] = resolver(field_value)
 
             elif isinstance(field_value, ModelRef):
                 # ModelRef always references external DB objects, never internal refs

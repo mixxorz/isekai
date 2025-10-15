@@ -160,7 +160,7 @@ class TestModelLoader:
             attributes={
                 "title": "Test Article",
                 "content": "This is a test article.",
-                "author_id": ResourceRef(author_key),
+                "author_id": ResourceRef(author_key).pk,
             },
         )
 
@@ -222,7 +222,7 @@ class TestModelLoader:
             attributes={
                 "title": "Python and Django Best Practices",
                 "content": "Here are some best practices...",
-                "author_id": ResourceRef(author_key),
+                "author_id": ResourceRef(author_key).pk,
                 "tags": [
                     ResourceRef(tag1_key),
                     ResourceRef(tag2_key),
@@ -294,7 +294,7 @@ class TestModelLoader:
             attributes={
                 "title": "Article with ModelRef M2M",
                 "content": "Testing ModelRef in M2M relationships.",
-                "author_id": ResourceRef(author_key),
+                "author_id": ResourceRef(author_key).pk,
                 "tags": [
                     ResourceRef(tag1_key),  # ResourceRef in M2M
                     ResourceRef(tag2_key),  # ResourceRef in M2M
@@ -366,7 +366,7 @@ class TestModelLoader:
             attributes={
                 "title": "Article with M2M Internal References",
                 "content": "Testing ResourceRef in M2M.",
-                "author_id": ResourceRef(author_key),
+                "author_id": ResourceRef(author_key).pk,
                 "tags": [
                     ResourceRef(tag1_key),  # ResourceRef in M2M
                     ResourceRef(tag2_key),  # ResourceRef in M2M
@@ -470,7 +470,9 @@ class TestModelLoader:
             attributes={
                 "title": "Article with External Author",
                 "content": "This article references an existing author.",
-                "author_id": ResourceRef(Key(type="author", value="existing_author")),
+                "author_id": ResourceRef(
+                    Key(type="author", value="existing_author")
+                ).pk,
             },
         )
 
@@ -515,7 +517,7 @@ class TestModelLoader:
                 "content": "This article references its author.",
                 "author_id": ResourceRef(
                     author_key
-                ),  # Article references author via FK
+                ).pk,  # Article references author via FK
             },
         )
 
@@ -623,7 +625,7 @@ class TestModelLoader:
             attributes={
                 "title": "Mixed M2M Article",
                 "content": "This article has mixed tag references.",
-                "author_id": ResourceRef(author_key),
+                "author_id": ResourceRef(author_key).pk,
                 "tags": [
                     ResourceRef(new_tag_key),  # Internal reference to new tag
                     ResourceRef(
@@ -677,7 +679,7 @@ class TestModelLoader:
             attributes={
                 "title": "Empty Article",
                 "content": "This article has empty relationships.",
-                "author_id": ResourceRef(author_key),
+                "author_id": ResourceRef(author_key).pk,
                 # Note: Empty M2M list [] would be handled by M2M phase, not included here
                 "metadata": None,  # Explicit null value
             },
@@ -719,7 +721,7 @@ class TestModelLoader:
         profile_spec = Spec(
             content_type="testapp.AuthorProfile",
             attributes={
-                "author_id": ResourceRef(author_key),  # OneToOne reference
+                "author_id": ResourceRef(author_key).pk,  # OneToOne reference
                 "website": "https://example.com",
                 "twitter_handle": "@profile_author",
                 "settings": {"theme": "dark", "notifications": True},
@@ -762,7 +764,7 @@ class TestModelLoader:
             attributes={
                 "author_id": ResourceRef(
                     Key(type="author", value="existing_oto_author")
-                ),
+                ).pk,
                 "website": "https://external.example.com",
                 "settings": {"external": True},
             },
@@ -809,7 +811,7 @@ class TestModelLoader:
         profile_spec = Spec(
             content_type="testapp.AuthorProfile",
             attributes={
-                "author_id": ResourceRef(author1_key),
+                "author_id": ResourceRef(author1_key).pk,
                 "website": "https://jsontest.example.com",
                 "settings": {
                     "preferred_collaborator": ResourceRef(author2_key),  # Ref in JSON
@@ -872,7 +874,7 @@ class TestModelLoader:
             attributes={
                 "title": "ID Field Article",
                 "content": "This article uses author_id field.",
-                "author_id": ResourceRef(author_key),  # Using _id suffix
+                "author_id": ResourceRef(author_key).pk,  # Using _id suffix
             },
         )
 
@@ -913,7 +915,9 @@ class TestModelLoader:
         profile_spec = Spec(
             content_type="testapp.AuthorProfile",
             attributes={
-                "author_id": ResourceRef(author_key),  # Using _id suffix for OneToOne
+                "author_id": ResourceRef(
+                    author_key
+                ).pk,  # Using _id suffix for OneToOne
                 "website": "https://otoid.example.com",
                 "settings": {"test": True},
             },
@@ -942,6 +946,54 @@ class TestModelLoader:
         objects = loader.load([], resolver)
 
         assert objects == []
+
+    def test_load_with_arbitrary_attribute_paths(self):
+        """Test that ResourceRef with arbitrary attribute paths like .name, .email work."""
+
+        def resolver(ref):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
+
+        loader = ModelLoader()
+
+        # Create author spec
+        author_key = Key(type="author", value="jane_smith")
+        author_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "Jane Smith",
+                "email": "jane@example.com",
+            },
+        )
+
+        # Create article spec that uses various author attributes
+        article_key = Key(type="article", value="attr_path_article")
+        article_spec = Spec(
+            content_type="testapp.Article",
+            attributes={
+                "title": ResourceRef(author_key).name,  # Use author's name as title
+                "content": ResourceRef(
+                    author_key
+                ).email,  # Use author's email as content
+                "author_id": ResourceRef(author_key).pk,  # Use author's pk for FK
+            },
+        )
+
+        objects = loader.load(
+            [(author_key, author_spec), (article_key, article_spec)], resolver
+        )
+
+        assert len(objects) == 2
+
+        # Find author and article in results
+        author = next(obj[1] for obj in objects if isinstance(obj[1], Author))
+        article = next(obj[1] for obj in objects if isinstance(obj[1], Article))
+
+        # Verify the attribute paths were resolved correctly
+        assert author.name == "Jane Smith"
+        assert author.email == "jane@example.com"
+        assert article.title == "Jane Smith"  # Should be author's name
+        assert article.content == "jane@example.com"  # Should be author's email
+        assert article.author == author  # FK should be resolved correctly
 
 
 @pytest.mark.django_db
@@ -1004,7 +1056,7 @@ class TestLoad:
             target_spec={
                 "title": "Test Article",
                 "content": "This is a test article.",
-                "author_id": str(ResourceRef(Key.from_string(author_resource.key))),
+                "author_id": str(ResourceRef(Key.from_string(author_resource.key)).pk),
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -1068,7 +1120,7 @@ class TestLoad:
             target_spec={
                 "title": "Test Article",
                 "content": "This is a test article.",
-                "author_id": str(ResourceRef(Key.from_string(author_resource.key))),
+                "author_id": str(ResourceRef(Key.from_string(author_resource.key)).pk),
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -1142,7 +1194,7 @@ class TestLoad:
             target_spec={
                 "title": "Test Article",
                 "content": "This is a test article.",
-                "author_id": str(ResourceRef(Key.from_string(author_resource.key))),
+                "author_id": str(ResourceRef(Key.from_string(author_resource.key)).pk),
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -1239,7 +1291,7 @@ class TestLoad:
             target_spec={
                 "title": "Circular Article",
                 "content": "This article has circular dependencies.",
-                "author_id": str(ResourceRef(circular_author_key)),
+                "author_id": str(ResourceRef(circular_author_key).pk),
                 "tags": [
                     str(ResourceRef(independent_tag_key))
                 ],  # Reference independent resource
@@ -1279,7 +1331,7 @@ class TestLoad:
             target_spec={
                 "title": "Chain Article",
                 "content": "This article is part of a dependency chain.",
-                "author_id": str(ResourceRef(chain_author_key)),
+                "author_id": str(ResourceRef(chain_author_key).pk),
                 "tags": [
                     str(ResourceRef(independent_tag_key))
                 ],  # Cross-reference to independent
@@ -1297,7 +1349,7 @@ class TestLoad:
                 app_label="testapp", model="authorprofile"
             ),
             target_spec={
-                "author_id": str(ResourceRef(chain_author_key)),
+                "author_id": str(ResourceRef(chain_author_key).pk),
                 "website": "https://chain.example.com",
                 "settings": {
                     "featured_article": str(ResourceRef(chain_article_key)),
@@ -1377,7 +1429,7 @@ class TestLoad:
                 "title": "Article with Missing Author",
                 "content": "This article references a non-existent author.",
                 "author_id": str(
-                    ResourceRef(Key(type="author", value="nonexistent_author"))
+                    ResourceRef(Key(type="author", value="nonexistent_author")).pk
                 ),
             },
             status=ConcreteResource.Status.TRANSFORMED,
@@ -1473,7 +1525,7 @@ class TestLoad:
             target_spec={
                 "title": "Dependent Article",
                 "content": "This article depends on the failing author.",
-                "author_id": str(ResourceRef(author_key)),
+                "author_id": str(ResourceRef(author_key).pk),
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -1717,7 +1769,7 @@ class TestLoad:
             target_spec={
                 "title": "Dependent Article",
                 "content": "This article depends on the unready author.",
-                "author_id": str(ResourceRef(base_author_key)),
+                "author_id": str(ResourceRef(base_author_key).pk),
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -1734,7 +1786,7 @@ class TestLoad:
                 app_label="testapp", model="authorprofile"
             ),
             target_spec={
-                "author_id": str(ResourceRef(base_author_key)),
+                "author_id": str(ResourceRef(base_author_key).pk),
                 "website": "https://dependent.example.com",
                 "settings": {
                     "featured_article": str(ResourceRef(dependent_article_key)),

@@ -428,7 +428,7 @@ class TestModelLoader:
                 "bio": {
                     "description": "Experienced writer",
                     "favorite_topics": ["Python", "Django"],
-                    "mentor": ResourceRef(mentor_key),
+                    "mentor": ResourceRef(mentor_key).pk,
                 },
             },
         )
@@ -512,7 +512,7 @@ class TestModelLoader:
                 "bio": {
                     "featured_article": ResourceRef(
                         article_key
-                    ),  # Author references article in JSON
+                    ).pk,  # Author references article in JSON
                 },
             },
         )
@@ -568,7 +568,9 @@ class TestModelLoader:
                 "name": "Student Author",
                 "email": "student@example.com",
                 "bio": {
-                    "mentor": ResourceRef(mentor_key),  # Self-reference via JSON field
+                    "mentor": ResourceRef(
+                        mentor_key
+                    ).pk,  # Self-reference via JSON field
                 },
             },
         )
@@ -821,7 +823,9 @@ class TestModelLoader:
                 "author_id": ResourceRef(author1_key).pk,
                 "website": "https://jsontest.example.com",
                 "settings": {
-                    "preferred_collaborator": ResourceRef(author2_key),  # Ref in JSON
+                    "preferred_collaborator": ResourceRef(
+                        author2_key
+                    ).pk,  # Ref in JSON
                     "theme": "light",
                 },
             },
@@ -1186,7 +1190,7 @@ class TestLoad:
             target_spec={
                 "name": "Jane Doe",
                 "email": "jane@example.com",
-                "bio": {"featured_articles": [str(ResourceRef(article_key))]},
+                "bio": {"featured_articles": [str(ResourceRef(article_key).pk)]},
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -1356,7 +1360,7 @@ class TestLoad:
             target_spec={
                 "name": "Circular Author",
                 "email": "circular@example.com",
-                "bio": {"featured_article": str(ResourceRef(circular_article_key))},
+                "bio": {"featured_article": str(ResourceRef(circular_article_key).pk)},
             },
             status=ConcreteResource.Status.TRANSFORMED,
         )
@@ -1375,7 +1379,7 @@ class TestLoad:
                 "content": "This article has circular dependencies.",
                 "author_id": str(ResourceRef(circular_author_key).pk),
                 "tags": [
-                    str(ResourceRef(independent_tag_key))
+                    str(ResourceRef(independent_tag_key).pk)
                 ],  # Reference independent resource
             },
             status=ConcreteResource.Status.TRANSFORMED,
@@ -1415,7 +1419,7 @@ class TestLoad:
                 "content": "This article is part of a dependency chain.",
                 "author_id": str(ResourceRef(chain_author_key).pk),
                 "tags": [
-                    str(ResourceRef(independent_tag_key))
+                    str(ResourceRef(independent_tag_key).pk)
                 ],  # Cross-reference to independent
             },
             status=ConcreteResource.Status.TRANSFORMED,
@@ -1434,8 +1438,8 @@ class TestLoad:
                 "author_id": str(ResourceRef(chain_author_key).pk),
                 "website": "https://chain.example.com",
                 "settings": {
-                    "featured_article": str(ResourceRef(chain_article_key)),
-                    "collaborator": str(ResourceRef(independent_author_key)),
+                    "featured_article": str(ResourceRef(chain_article_key).pk),
+                    "collaborator": str(ResourceRef(independent_author_key).pk),
                 },
             },
             status=ConcreteResource.Status.TRANSFORMED,
@@ -1871,7 +1875,7 @@ class TestLoad:
                 "author_id": str(ResourceRef(base_author_key).pk),
                 "website": "https://dependent.example.com",
                 "settings": {
-                    "featured_article": str(ResourceRef(dependent_article_key)),
+                    "featured_article": str(ResourceRef(dependent_article_key).pk),
                 },
             },
             status=ConcreteResource.Status.TRANSFORMED,

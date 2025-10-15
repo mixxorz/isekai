@@ -56,13 +56,7 @@ class ModelLoader(BaseLoader):
 
             # Resolve all pending internal ResourceRef
             for obj_key, field_name, ref in pending_refs:
-                # Get the referenced object
-                referenced_obj = key_to_object[ref.key]
-                # Traverse attribute path if present
-                value = referenced_obj
-                for attr in ref.attr_path:
-                    value = getattr(value, attr)
-                # Set the field value
+                value = self._resolve_ref(ref, key_to_object, resolver)
                 setattr(key_to_object[obj_key], field_name, value)
                 key_to_object[obj_key].save()
 
@@ -77,14 +71,10 @@ class ModelLoader(BaseLoader):
                 m2m_manager = getattr(key_to_object[obj_key], field_name)
                 resolved_values = []
                 for ref in ref_values:
-                    if isinstance(ref, ResourceRef):
-                        if ref.key in key_to_object:
-                            resolved_values.append(key_to_object[ref.key])
-                        else:
-                            resolved_values.append(resolver(ref))
-                    elif isinstance(ref, ModelRef):
-                        # ModelRef always references external objects
-                        resolved_values.append(resolver(ref))
+                    if isinstance(ref, ResourceRef | ModelRef):
+                        resolved_values.append(
+                            self._resolve_ref(ref, key_to_object, resolver)
+                        )
                     else:
                         resolved_values.append(ref)
                 m2m_manager.set(resolved_values)
@@ -225,14 +215,9 @@ class ModelLoader(BaseLoader):
                     obj_fields[field_name] = resolver(field_value)
 
             elif isinstance(field_value, ModelRef):
-                # ModelRef always references external DB objects, never internal refs
-                # Resolve immediately for FK fields; skip for JSON fields (resolved later)
-                if field.get_internal_type() == "JSONField":
-                    # JSON field - skip for now, will be resolved in JSON phase
-                    pass
-                else:
-                    # Resolve immediately - let Django handle validation if wrong field type
-                    obj_fields[field_name] = resolver(field_value)
+                # ModelRef always references external DB objects
+                # Resolve immediately to model instance
+                obj_fields[field_name] = resolver(field_value)
 
             elif isinstance(field_value, list) and any(
                 isinstance(v, BaseRef | ResourceRef | ModelRef) for v in field_value
@@ -272,8 +257,8 @@ class ModelLoader(BaseLoader):
         for json_field in json_fields:
             if json_field.name in spec.attributes:
                 field_value = spec.attributes[json_field.name]
-                # Always try to resolve - _resolve_refs returns unchanged if no refs
-                resolved_value = self._resolve_refs(
+                # Always try to resolve - _resolve_nested_refs returns unchanged if no refs
+                resolved_value = self._resolve_nested_refs(
                     field_value, key_to_object, resolver
                 )
                 if resolved_value != field_value:  # Only update if something changed
@@ -293,28 +278,46 @@ class ModelLoader(BaseLoader):
             return any(self._has_refs(item) for item in data)
         return False
 
-    def _resolve_refs(self, data, key_to_object, resolver):
-        """Recursively resolve ResourceRef and ModelRef objects in nested data.
+    def _resolve_ref(self, ref, key_to_object, resolver):
+        """Resolve a single ResourceRef or ModelRef to its final value.
 
-        For JSON fields, refs are resolved to their PK values (not model instances)
-        since JSON fields can only store serializable data.
+        Handles both internal and external references with proper attr_path traversal:
+        - Internal ResourceRef: Get from key_to_object and traverse attr_path manually
+        - External ResourceRef: Use resolver (which handles attr_path traversal)
+        - ModelRef: Always use resolver (which handles attr_path traversal)
         """
-        if isinstance(data, ResourceRef):
-            # Resolve to model instance first, then extract PK
-            obj = (
-                key_to_object[data.key] if data.key in key_to_object else resolver(data)
-            )
-            return obj.pk
-        elif isinstance(data, ModelRef):
-            # ModelRef always references external objects, resolve to PK
-            obj = resolver(data)
-            return obj.pk
+        if isinstance(ref, ResourceRef):
+            if ref.key in key_to_object:
+                # Internal ref - get from key_to_object and traverse attr_path
+                value = key_to_object[ref.key]
+                for attr in ref.attr_path:
+                    value = getattr(value, attr)
+                return value
+            else:
+                # External ref - resolver handles attr_path traversal
+                return resolver(ref)
+        elif isinstance(ref, ModelRef):
+            # ModelRef - resolver handles attr_path traversal
+            return resolver(ref)
+        else:
+            raise TypeError(f"Expected ResourceRef or ModelRef, got {type(ref)}")
+
+    def _resolve_nested_refs(self, data, key_to_object, resolver):
+        """Recursively resolve refs in nested structures (dicts/lists) for JSON fields.
+
+        Resolves ResourceRef and ModelRef to their final values by traversing attr_path.
+        """
+        if isinstance(data, ResourceRef | ModelRef):
+            return self._resolve_ref(data, key_to_object, resolver)
         elif isinstance(data, dict):
             return {
-                k: self._resolve_refs(v, key_to_object, resolver)
+                k: self._resolve_nested_refs(v, key_to_object, resolver)
                 for k, v in data.items()
             }
         elif isinstance(data, list):
-            return [self._resolve_refs(item, key_to_object, resolver) for item in data]
+            return [
+                self._resolve_nested_refs(item, key_to_object, resolver)
+                for item in data
+            ]
         else:
             return data

@@ -115,9 +115,9 @@ class TestRefs:
 
         # ModelRef from string
         ref = ModelRef.from_string("isekai-model-ref:\\testapp.Author?pk=42")
-        assert ref.content_type == "testapp.Author"
-        assert ref.lookup_kwargs == {"pk": "42"}
-        assert ref.attr_path == ()
+        assert ref._content_type == "testapp.Author"
+        assert ref._lookup_kwargs == {"pk": "42"}
+        assert ref._attr_path == ()
 
     def test_model_ref_multiple_kwargs(self):
         # ModelRef with multiple kwargs
@@ -132,8 +132,8 @@ class TestRefs:
         ref = ModelRef.from_string(
             "isekai-model-ref:\\auth.User?email=test%40example.com&is_active=True"
         )
-        assert ref.content_type == "auth.User"
-        assert ref.lookup_kwargs == {"email": "test@example.com", "is_active": "True"}
+        assert ref._content_type == "auth.User"
+        assert ref._lookup_kwargs == {"email": "test@example.com", "is_active": "True"}
 
     def test_model_ref_with_attribute_access(self):
         # ModelRef with attribute access
@@ -144,9 +144,9 @@ class TestRefs:
         ref = ModelRef.from_string(
             "isekai-model-ref:\\testapp.Author?pk=42::group.name"
         )
-        assert ref.content_type == "testapp.Author"
-        assert ref.lookup_kwargs == {"pk": "42"}
-        assert ref.attr_path == ("group", "name")
+        assert ref._content_type == "testapp.Author"
+        assert ref._lookup_kwargs == {"pk": "42"}
+        assert ref._attr_path == ("group", "name")
 
     def test_model_ref_with_deep_chaining(self):
         # ModelRef with deep attribute chaining
@@ -160,9 +160,9 @@ class TestRefs:
         ref = ModelRef.from_string(
             "isekai-model-ref:\\testapp.Article?slug=my-article::author.group.name"
         )
-        assert ref.content_type == "testapp.Article"
-        assert ref.lookup_kwargs == {"slug": "my-article"}
-        assert ref.attr_path == ("author", "group", "name")
+        assert ref._content_type == "testapp.Article"
+        assert ref._lookup_kwargs == {"slug": "my-article"}
+        assert ref._attr_path == ("author", "group", "name")
 
     def test_model_ref_with_pk_attribute(self):
         # ModelRef with .pk access
@@ -175,9 +175,9 @@ class TestRefs:
         ref = ModelRef.from_string(
             "isekai-model-ref:\\testapp.Author?email=test%40example.com::pk"
         )
-        assert ref.content_type == "testapp.Author"
-        assert ref.lookup_kwargs == {"email": "test@example.com"}
-        assert ref.attr_path == ("pk",)
+        assert ref._content_type == "testapp.Author"
+        assert ref._lookup_kwargs == {"email": "test@example.com"}
+        assert ref._attr_path == ("pk",)
 
     def test_model_ref_invalid_string(self):
         # Invalid format should raise ValueError

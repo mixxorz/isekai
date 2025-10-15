@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any, ClassVar, Literal, Protocol, overload
+from urllib.parse import parse_qs, unquote, urlencode
 
 if TYPE_CHECKING:
     from django.db.models import FieldFile, Model
@@ -248,18 +249,6 @@ class ModelRef:
         object.__setattr__(self, "_lookup_kwargs", lookup_kwargs)
         object.__setattr__(self, "_attr_path", attr_path)
 
-    @property
-    def content_type(self) -> str:
-        return self._content_type
-
-    @property
-    def lookup_kwargs(self) -> dict[str, Any]:
-        return self._lookup_kwargs
-
-    @property
-    def attr_path(self) -> tuple[str, ...]:
-        return self._attr_path
-
     def __getattr__(self, name: str) -> "ModelRef":
         """
         Capture attribute access and return a new ModelRef with extended attr_path.
@@ -295,8 +284,6 @@ class ModelRef:
         Parses a string into a ModelRef object.
         Format: "isekai-model-ref:\\app.Model?pk=42&slug=foo::attr1.attr2"
         """
-        from urllib.parse import parse_qs, unquote
-
         if not refstr.startswith(cls._prefix):
             raise ValueError(f"Invalid ref: {refstr}")
 
@@ -328,14 +315,12 @@ class ModelRef:
         """
         Returns the string representation of the ModelRef.
         """
-        from urllib.parse import urlencode
-
         # Convert lookup_kwargs to query string
-        query_string = urlencode(self.lookup_kwargs)
-        base = f"{self._prefix}{self.content_type}?{query_string}"
+        query_string = urlencode(self._lookup_kwargs)
+        base = f"{self._prefix}{self._content_type}?{query_string}"
 
-        if self.attr_path:
-            return f"{base}::{'.'.join(self.attr_path)}"
+        if self._attr_path:
+            return f"{base}::{'.'.join(self._attr_path)}"
         return base
 
 

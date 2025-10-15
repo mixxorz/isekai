@@ -540,11 +540,11 @@ class Pipeline:
 
             # If it's a ModelRef, fetch from DB using content_type and lookup_kwargs
             elif type(ref) is ModelRef:
-                app_label, model_name = ref.content_type.split(".", 1)
+                app_label, model_name = ref._content_type.split(".", 1)
                 model_class = apps.get_model(app_label, model_name)
-                obj = model_class.objects.get(**ref.lookup_kwargs)
+                obj = model_class.objects.get(**ref._lookup_kwargs)
                 # Traverse attribute path
-                for attr in ref.attr_path:
+                for attr in ref._attr_path:
                     obj = getattr(obj, attr)
                 return obj
 

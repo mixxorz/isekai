@@ -145,8 +145,6 @@ class Spec:
                         return BlobRef.from_string(value)
                     elif value.startswith("isekai-model-ref:\\"):
                         return ModelRef.from_string(value)
-                    elif value.startswith("isekai-pk-ref:\\"):
-                        return PkRef.from_string(value)
                 except ValueError:
                     pass
                 # If parsing fails or doesn't match patterns, return as string
@@ -218,17 +216,6 @@ class BaseRef:
         Returns the string representation of the reference.
         """
         return f"{self._prefix}{self.key}"
-
-
-@dataclass(frozen=True, slots=True)
-class PkRef(BaseRef):
-    """
-    Represents a reference to a resource using a Key.
-
-    Will be replaced by the resource's final primary key during Load.
-    """
-
-    _prefix = "isekai-pk-ref:\\"
 
 
 class ModelRef:
@@ -405,14 +392,14 @@ class Resolver(Protocol):
     """
     A resolver function that takes a ref and returns the appropriate value:
     - BlobRef -> FileProxy
-    - PkRef -> database PK (int | str)
-    - ModelRef -> model instance
+    - ResourceRef -> model instance or attribute value
+    - ModelRef -> model instance or attribute value
     """
 
     @overload
     def __call__(self, ref: BlobRef) -> FileProxy: ...
     @overload
-    def __call__(self, ref: PkRef) -> int | str: ...
+    def __call__(self, ref: ResourceRef) -> "Model | int | str": ...
     @overload
     def __call__(self, ref: ModelRef) -> "Model": ...
 

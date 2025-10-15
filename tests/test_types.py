@@ -135,6 +135,86 @@ class TestRefs:
         with pytest.raises(ValueError):
             ResourceRef.from_string("resource:\\test:123")
 
+    def test_model_ref_basic(self):
+        # Basic ModelRef with single kwarg
+        ref = ModelRef("testapp.Author", pk=42)
+        assert str(ref) == "isekai-model-ref:\\testapp.Author?pk=42"
+
+        # ModelRef from string
+        ref = ModelRef.from_string("isekai-model-ref:\\testapp.Author?pk=42")
+        assert ref.content_type == "testapp.Author"
+        assert ref.lookup_kwargs == {"pk": "42"}
+        assert ref.attr_path == ()
+
+    def test_model_ref_multiple_kwargs(self):
+        # ModelRef with multiple kwargs
+        ref = ModelRef("auth.User", email="test@example.com", is_active=True)
+        ref_str = str(ref)
+        assert ref_str.startswith("isekai-model-ref:\\auth.User?")
+        # Query params can be in any order, so check both contain the same params
+        assert "email=test%40example.com" in ref_str
+        assert "is_active=True" in ref_str
+
+        # ModelRef from string with multiple params
+        ref = ModelRef.from_string(
+            "isekai-model-ref:\\auth.User?email=test%40example.com&is_active=True"
+        )
+        assert ref.content_type == "auth.User"
+        assert ref.lookup_kwargs == {"email": "test@example.com", "is_active": "True"}
+
+    def test_model_ref_with_attribute_access(self):
+        # ModelRef with attribute access
+        ref = ModelRef("testapp.Author", pk=42).group.name
+        assert str(ref) == "isekai-model-ref:\\testapp.Author?pk=42::group.name"
+
+        # ModelRef from string with attributes
+        ref = ModelRef.from_string(
+            "isekai-model-ref:\\testapp.Author?pk=42::group.name"
+        )
+        assert ref.content_type == "testapp.Author"
+        assert ref.lookup_kwargs == {"pk": "42"}
+        assert ref.attr_path == ("group", "name")
+
+    def test_model_ref_with_deep_chaining(self):
+        # ModelRef with deep attribute chaining
+        ref = ModelRef("testapp.Article", slug="my-article").author.group.name
+        ref_str = str(ref)
+        assert ref_str.startswith("isekai-model-ref:\\testapp.Article?")
+        assert "slug=my-article" in ref_str
+        assert ref_str.endswith("::author.group.name")
+
+        # ModelRef from string with deep chaining
+        ref = ModelRef.from_string(
+            "isekai-model-ref:\\testapp.Article?slug=my-article::author.group.name"
+        )
+        assert ref.content_type == "testapp.Article"
+        assert ref.lookup_kwargs == {"slug": "my-article"}
+        assert ref.attr_path == ("author", "group", "name")
+
+    def test_model_ref_with_pk_attribute(self):
+        # ModelRef with .pk access
+        ref = ModelRef("testapp.Author", email="test@example.com").pk
+        assert (
+            str(ref) == "isekai-model-ref:\\testapp.Author?email=test%40example.com::pk"
+        )
+
+        # ModelRef from string with pk
+        ref = ModelRef.from_string(
+            "isekai-model-ref:\\testapp.Author?email=test%40example.com::pk"
+        )
+        assert ref.content_type == "testapp.Author"
+        assert ref.lookup_kwargs == {"email": "test@example.com"}
+        assert ref.attr_path == ("pk",)
+
+    def test_model_ref_invalid_string(self):
+        # Invalid format should raise ValueError
+        with pytest.raises(ValueError):
+            ModelRef.from_string("invalid-string")
+
+        # Invalid prefix should raise ValueError
+        with pytest.raises(ValueError):
+            ModelRef.from_string("model:\\testapp.Author?pk=42")
+
 
 class TestSpec:
     def test_to_dict(self):

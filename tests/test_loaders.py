@@ -1085,8 +1085,8 @@ class TestModelLoader:
     def test_load_with_string_ref_single_resourceref(self):
         """Test loading with a single ResourceRef embedded in a string field."""
 
-        def resolver(ref_arg):
-            raise AssertionError(f"Resolver should not be called, got ref: {ref_arg}")
+        def resolver(ref):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
         loader = ModelLoader()
 
@@ -1129,8 +1129,8 @@ class TestModelLoader:
     def test_load_with_string_ref_multiple_resourcerefs(self):
         """Test loading with multiple ResourceRefs embedded in a single string field."""
 
-        def resolver(ref_arg):
-            raise AssertionError(f"Resolver should not be called, got ref: {ref_arg}")
+        def resolver(ref):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
         loader = ModelLoader()
 
@@ -1179,18 +1179,27 @@ class TestModelLoader:
             email="existing@example.com",
         )
 
-        def resolver(ref_arg):
-            if isinstance(ref_arg, ModelRef):
+        @overload
+        def resolver(ref: BlobRef) -> FileProxy: ...
+        @overload
+        def resolver(ref: ResourceRef) -> int | str: ...
+        @overload
+        def resolver(ref: ModelRef) -> int | str | Model: ...
+
+        def resolver(
+            ref: ResourceRef | BlobRef | ModelRef,
+        ) -> FileProxy | int | str | Model:
+            if isinstance(ref, ModelRef):
                 if (
-                    ref_arg.ref_content_type == "testapp.Author"
-                    and ref_arg.ref_lookup_kwargs.get("pk") == str(existing_author.pk)
+                    ref.ref_content_type == "testapp.Author"
+                    and ref.ref_lookup_kwargs.get("pk") == str(existing_author.pk)
                 ):
                     # Resolve ModelRef with attribute path
                     obj = existing_author
-                    for attr in ref_arg.ref_attr_path:
+                    for attr in ref.ref_attr_path:
                         obj = getattr(obj, attr)
                     return obj
-            raise AssertionError(f"Unexpected ref: {ref_arg}")
+            raise AssertionError(f"Unexpected ref: {ref}")
 
         loader = ModelLoader()
 
@@ -1216,8 +1225,8 @@ class TestModelLoader:
     def test_load_with_string_ref_chained_attributes(self):
         """Test loading with ResourceRef that has chained attribute access in string."""
 
-        def resolver(ref_arg):
-            raise AssertionError(f"Resolver should not be called, got ref: {ref_arg}")
+        def resolver(ref):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
         loader = ModelLoader()
 
@@ -1259,8 +1268,8 @@ class TestModelLoader:
     def test_load_with_string_ref_no_refs(self):
         """Test that strings without refs are not modified."""
 
-        def resolver(ref_arg):
-            raise AssertionError(f"Resolver should not be called, got ref: {ref_arg}")
+        def resolver(ref):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
         loader = ModelLoader()
 
@@ -1301,8 +1310,8 @@ class TestModelLoader:
     def test_load_with_string_ref_different_string_field_types(self):
         """Test that string ref resolution works with different string field types."""
 
-        def resolver(ref_arg):
-            raise AssertionError(f"Resolver should not be called, got ref: {ref_arg}")
+        def resolver(ref):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
         loader = ModelLoader()
 
@@ -1354,18 +1363,24 @@ class TestModelLoader:
             email="external@example.com",
         )
 
-        def resolver(ref_arg):
-            if isinstance(ref_arg, ResourceRef):
-                if (
-                    ref_arg.key.type == "author"
-                    and ref_arg.key.value == "external_author"
-                ):
+        @overload
+        def resolver(ref: BlobRef) -> FileProxy: ...
+        @overload
+        def resolver(ref: ResourceRef) -> int | str | Model: ...
+        @overload
+        def resolver(ref: ModelRef) -> int | str | Model: ...
+
+        def resolver(
+            ref: ResourceRef | BlobRef | ModelRef,
+        ) -> FileProxy | int | str | Model:
+            if isinstance(ref, ResourceRef):
+                if ref.key.type == "author" and ref.key.value == "external_author":
                     # Resolve external ResourceRef with attribute path
                     obj = existing_author
-                    for attr in ref_arg.ref_attr_path:
+                    for attr in ref.ref_attr_path:
                         obj = getattr(obj, attr)
                     return obj
-            raise AssertionError(f"Unexpected ref: {ref_arg}")
+            raise AssertionError(f"Unexpected ref: {ref}")
 
         loader = ModelLoader()
 
@@ -1392,8 +1407,8 @@ class TestModelLoader:
     def test_load_with_string_ref_mixed_with_literal_text(self):
         """Test that refs in strings can be mixed with literal text, punctuation, etc."""
 
-        def resolver(ref_arg):
-            raise AssertionError(f"Resolver should not be called, got ref: {ref_arg}")
+        def resolver(ref):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
 
         loader = ModelLoader()
 

@@ -82,7 +82,7 @@ class Article(models.Model):
 class AuthorProfile(models.Model):
     author = models.OneToOneField(Author, on_delete=models.CASCADE)
     website = models.URLField(blank=True)
-    twitter_handle = models.CharField(max_length=50, blank=True)
+    twitter_handle = models.CharField(max_length=200, blank=True)
     settings = models.JSONField(blank=True, null=True)
 
     class Meta:

@@ -7,7 +7,7 @@ from django.db import connection, models, transaction
 from django.utils import timezone
 from modelcluster.fields import ParentalKey, ParentalManyToManyField
 
-from isekai.types import BaseRef, BlobRef, Key, ModelRef, Resolver, ResourceRef, Spec
+from isekai.types import BlobRef, Key, ModelRef, Resolver, ResourceRef, Spec
 
 
 class BaseLoader:
@@ -220,7 +220,7 @@ class ModelLoader(BaseLoader):
                 obj_fields[field_name] = resolver(field_value)
 
             elif isinstance(field_value, list) and any(
-                isinstance(v, BaseRef | ResourceRef | ModelRef) for v in field_value
+                isinstance(v, BlobRef | ResourceRef | ModelRef) for v in field_value
             ):
                 if isinstance(field, models.ManyToManyField | ParentalManyToManyField):
                     # M2M fields accept both ResourceRef and ModelRef
@@ -270,7 +270,7 @@ class ModelLoader(BaseLoader):
 
     def _has_refs(self, data):
         """Check if data contains reference objects."""
-        if isinstance(data, BaseRef | ResourceRef | ModelRef):
+        if isinstance(data, BlobRef | ResourceRef | ModelRef):
             return True
         elif isinstance(data, dict):
             return any(self._has_refs(v) for v in data.values())

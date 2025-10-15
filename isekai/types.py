@@ -118,7 +118,7 @@ class Spec:
 
     def to_dict(self):
         def serialize_value(value):
-            if isinstance(value, BaseRef | ResourceRef | ModelRef):
+            if isinstance(value, BlobRef | ResourceRef | ModelRef):
                 return str(value)
             elif isinstance(value, dict):
                 return {k: serialize_value(v) for k, v in value.items()}
@@ -163,7 +163,7 @@ class Spec:
             },
         )
 
-    def find_refs(self) -> list["BaseRef | ResourceRef | ModelRef"]:
+    def find_refs(self) -> list["BlobRef | ResourceRef"]:
         """
         Find all Refs in the attributes dict.
 
@@ -174,7 +174,7 @@ class Spec:
         seen = set()
 
         def collect_refs(value):
-            if isinstance(value, BaseRef | ResourceRef):
+            if isinstance(value, BlobRef | ResourceRef):
                 # Only collect BlobRef and ResourceRef, not ModelRef
                 ref_str = str(value)
                 if ref_str not in seen:
@@ -189,33 +189,6 @@ class Spec:
 
         collect_refs(self.attributes)
         return refs
-
-
-@dataclass(frozen=True, slots=True)
-class BaseRef:
-    """
-    Base class for all reference types.
-    """
-
-    key: Key
-    _prefix: ClassVar[str]  # Must be overridden in subclasses
-
-    @classmethod
-    def from_string(cls, refstr: str):
-        """
-        Parses a string into a reference object.
-        """
-        if not refstr.startswith(cls._prefix):
-            raise ValueError(f"Invalid ref: {refstr}")
-
-        key = Key.from_string(refstr.removeprefix(cls._prefix))
-        return cls(key=key)
-
-    def __str__(self) -> str:
-        """
-        Returns the string representation of the reference.
-        """
-        return f"{self._prefix}{self.key}"
 
 
 class ModelRef:
@@ -312,14 +285,32 @@ class ModelRef:
 
 
 @dataclass(frozen=True, slots=True)
-class BlobRef(BaseRef):
+class BlobRef:
     """
     Represents a reference to a blob resource using a Key.
 
     Will be replaced by the resource's blob data during Load.
     """
 
-    _prefix = "isekai-blob-ref:\\"
+    key: Key
+    _prefix: ClassVar[str] = "isekai-blob-ref:\\"
+
+    @classmethod
+    def from_string(cls, refstr: str) -> "BlobRef":
+        """
+        Parses a string into a BlobRef object.
+        """
+        if not refstr.startswith(cls._prefix):
+            raise ValueError(f"Invalid ref: {refstr}")
+
+        key = Key.from_string(refstr.removeprefix(cls._prefix))
+        return cls(key=key)
+
+    def __str__(self) -> str:
+        """
+        Returns the string representation of the BlobRef.
+        """
+        return f"{self._prefix}{self.key}"
 
 
 class ResourceRef:

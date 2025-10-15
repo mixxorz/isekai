@@ -6,7 +6,7 @@ from freezegun import freeze_time
 
 from isekai.pipelines import Pipeline, get_django_pipeline
 from isekai.transformers import BaseTransformer
-from isekai.types import BlobRef, Key, ModelRef, PkRef, Spec, TextResource
+from isekai.types import BlobRef, Key, ModelRef, ResourceRef, Spec, TextResource
 from tests.testapp.models import ConcreteResource
 
 
@@ -186,11 +186,6 @@ class TestTransform:
             status=ConcreteResource.Status.LOADED,
         )
 
-        category_resource = ConcreteResource.objects.create(
-            key="url:https://example.com/category/tech",
-            status=ConcreteResource.Status.LOADED,
-        )
-
         attachment_resource = ConcreteResource.objects.create(
             key="file:document.pdf",
             status=ConcreteResource.Status.LOADED,
@@ -222,10 +217,8 @@ class TestTransform:
                         "hero_image": BlobRef(
                             Key(type="url", value="https://example.com/hero-image.jpg")
                         ),
-                        "author": PkRef(Key(type="gen", value="author-456")),
-                        "category": ModelRef(
-                            Key(type="url", value="https://example.com/category/tech")
-                        ),
+                        "author": ResourceRef(Key(type="gen", value="author-456")),
+                        "category": ModelRef("testapp.Category", pk=1),
                         "attachment": BlobRef(Key(type="file", value="document.pdf")),
                         "metadata": {
                             "related_image": BlobRef(
@@ -234,7 +227,7 @@ class TestTransform:
                                     value="https://example.com/hero-image.jpg",
                                 )
                             ),  # Duplicate ref
-                            "secondary_author": PkRef(
+                            "secondary_author": ResourceRef(
                                 Key(type="gen", value="author-456")
                             ),  # Duplicate ref
                         },
@@ -274,12 +267,12 @@ class TestTransform:
             "title": "Test Article",
             "content": "Test article content",
             "hero_image": "isekai-blob-ref:\\url:https://example.com/hero-image.jpg",
-            "author": "isekai-pk-ref:\\gen:author-456",
-            "category": "isekai-model-ref:\\url:https://example.com/category/tech",
+            "author": "isekai-resource-ref:\\gen:author-456",
+            "category": "isekai-model-ref:\\testapp.Category?pk=1",
             "attachment": "isekai-blob-ref:\\file:document.pdf",
             "metadata": {
                 "related_image": "isekai-blob-ref:\\url:https://example.com/hero-image.jpg",
-                "secondary_author": "isekai-pk-ref:\\gen:author-456",
+                "secondary_author": "isekai-resource-ref:\\gen:author-456",
             },
             "published": True,
             "tags": ["tech", "news"],
@@ -287,23 +280,22 @@ class TestTransform:
         assert main_resource.target_spec == expected_spec
 
         # Verify dependencies are set correctly (unique refs only, no duplicates)
+        # Note: ModelRef doesn't create dependencies since it references external DB objects
         dependencies = list(main_resource.dependencies.all())
         dependency_keys = {dep.key for dep in dependencies}
 
         expected_dependency_keys = {
             "url:https://example.com/hero-image.jpg",  # BlobRef (appears twice but should be unique)
-            "gen:author-456",  # PkRef (appears twice but should be unique)
-            "url:https://example.com/category/tech",  # ModelRef
+            "gen:author-456",  # ResourceRef (appears twice but should be unique)
             "file:document.pdf",  # BlobRef
         }
 
-        assert len(dependencies) == 4  # Should have exactly 4 unique dependencies
+        assert len(dependencies) == 3  # Should have exactly 3 unique dependencies
         assert dependency_keys == expected_dependency_keys
 
         # Verify the actual dependency objects exist
         assert image_resource in dependencies
         assert author_resource in dependencies
-        assert category_resource in dependencies
         assert attachment_resource in dependencies
 
     def test_transform_fails_with_invalid_refs(self):

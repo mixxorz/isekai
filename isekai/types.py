@@ -4,9 +4,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any, ClassVar, Literal, Protocol, overload
+from urllib.parse import parse_qs, unquote, urlencode
 
 if TYPE_CHECKING:
-    from django.db.models import FieldFile, Model
+    from django.db.models import FieldFile
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,7 +118,7 @@ class Spec:
 
     def to_dict(self):
         def serialize_value(value):
-            if isinstance(value, BaseRef):
+            if isinstance(value, BlobRef | ResourceRef | ModelRef):
                 return str(value)
             elif isinstance(value, dict):
                 return {k: serialize_value(v) for k, v in value.items()}
@@ -136,14 +137,14 @@ class Spec:
     def from_dict(cls, data):
         def deserialize_value(value):
             if isinstance(value, str):
-                # Try to parse as BlobRef first, then ModelRef, then PkRef
+                # Try to parse as various ref types
                 try:
-                    if value.startswith("isekai-blob-ref:\\"):
+                    if value.startswith("isekai-resource-ref:\\"):
+                        return ResourceRef.from_string(value)
+                    elif value.startswith("isekai-blob-ref:\\"):
                         return BlobRef.from_string(value)
                     elif value.startswith("isekai-model-ref:\\"):
                         return ModelRef.from_string(value)
-                    elif value.startswith("isekai-pk-ref:\\"):
-                        return PkRef.from_string(value)
                 except ValueError:
                     pass
                 # If parsing fails or doesn't match patterns, return as string
@@ -162,15 +163,19 @@ class Spec:
             },
         )
 
-    def find_refs(self) -> list["BaseRef"]:
+    def find_refs(self) -> list["BlobRef | ResourceRef"]:
         """
         Find all Refs in the attributes dict.
+
+        Only BlobRef and ResourceRef create resource dependencies.
+        ModelRef doesn't create dependencies since it references existing DB objects directly.
         """
         refs = []
         seen = set()
 
         def collect_refs(value):
-            if isinstance(value, BaseRef):
+            if isinstance(value, BlobRef | ResourceRef):
+                # Only collect BlobRef and ResourceRef, not ModelRef
                 ref_str = str(value)
                 if ref_str not in seen:
                     seen.add(ref_str)
@@ -186,19 +191,130 @@ class Spec:
         return refs
 
 
-@dataclass(frozen=True, slots=True)
-class BaseRef:
+class ModelRef:
     """
-    Base class for all reference types.
+    Represents a reference to an existing database model using content_type and lookup kwargs.
+
+    Supports lazy attribute chaining: ModelRef("app.Model", pk=42).group.name
+
+    Will fetch the model from the database and resolve to the instance (or attribute value) during Load.
+    """
+
+    _prefix: ClassVar[str] = "isekai-model-ref:\\"
+
+    def __init__(
+        self, content_type: str, attr_path: tuple[str, ...] = (), **lookup_kwargs
+    ):
+        object.__setattr__(self, "_ref_content_type", content_type)
+        object.__setattr__(self, "_ref_lookup_kwargs", lookup_kwargs)
+        object.__setattr__(self, "_ref_attr_path", attr_path)
+
+    @property
+    def ref_content_type(self) -> str:
+        return self._ref_content_type  # type: ignore
+
+    @property
+    def ref_attr_path(self) -> tuple[str, ...]:
+        return self._ref_attr_path  # type: ignore
+
+    @property
+    def ref_lookup_kwargs(self) -> dict[str, Any]:
+        return self._ref_lookup_kwargs  # type: ignore
+
+    def __getattr__(self, name: str) -> "ModelRef":
+        """
+        Capture attribute access and return a new ModelRef with extended attr_path.
+        """
+        # Return new ModelRef with extended attribute path
+        new_ref = ModelRef.__new__(ModelRef)
+        # Access internal attributes via object.__getattribute__ to bypass __getattr__
+        content_type = object.__getattribute__(self, "_ref_content_type")
+        lookup_kwargs = object.__getattribute__(self, "_ref_lookup_kwargs")
+        attr_path = object.__getattribute__(self, "_ref_attr_path")
+        object.__setattr__(new_ref, "_ref_content_type", content_type)
+        object.__setattr__(new_ref, "_ref_lookup_kwargs", lookup_kwargs)
+        object.__setattr__(new_ref, "_ref_attr_path", attr_path + (name,))
+        return new_ref
+
+    def __eq__(self, other):
+        if not isinstance(other, ModelRef):
+            return False
+        return (
+            self.ref_content_type == other.ref_content_type
+            and self.ref_lookup_kwargs == other.ref_lookup_kwargs
+            and self.ref_attr_path == other.ref_attr_path
+        )
+
+    def __hash__(self):
+        return hash(
+            (
+                self.ref_content_type,
+                tuple(sorted(self.ref_lookup_kwargs.items())),
+                self.ref_attr_path,
+            )
+        )
+
+    @classmethod
+    def from_string(cls, refstr: str) -> "ModelRef":
+        """
+        Parses a string into a ModelRef object.
+        Format: "isekai-model-ref:\\app.Model?pk=42&slug=foo::attr1.attr2"
+        """
+        if not refstr.startswith(cls._prefix):
+            raise ValueError(f"Invalid ref: {refstr}")
+
+        # Remove prefix
+        rest = refstr.removeprefix(cls._prefix)
+
+        # Check if there's an attribute path
+        if "::" in rest:
+            query_part, attr_str = rest.split("::", 1)
+            attr_path = tuple(attr_str.split("."))
+        else:
+            query_part = rest
+            attr_path = ()
+
+        # Split content_type and query string
+        if "?" in query_part:
+            content_type, query_string = query_part.split("?", 1)
+            # Parse query string - parse_qs returns lists, we want single values
+            parsed = parse_qs(query_string)
+            lookup_kwargs = {k: unquote(v[0]) for k, v in parsed.items()}
+        else:
+            raise ValueError(
+                f"Invalid ModelRef format (missing query params): {refstr}"
+            )
+
+        return cls(content_type=content_type, attr_path=attr_path, **lookup_kwargs)
+
+    def __str__(self) -> str:
+        """
+        Returns the string representation of the ModelRef.
+        """
+        # Convert lookup_kwargs to query string
+        query_string = urlencode(self.ref_lookup_kwargs)
+        base = f"{self._prefix}{self.ref_content_type}?{query_string}"
+
+        if self.ref_attr_path:
+            return f"{base}::{'.'.join(self.ref_attr_path)}"
+        return base
+
+
+@dataclass(frozen=True, slots=True)
+class BlobRef:
+    """
+    Represents a reference to a blob resource using a Key.
+
+    Will be replaced by the resource's blob data during Load.
     """
 
     key: Key
-    _prefix: ClassVar[str]  # Must be overridden in subclasses
+    _prefix: ClassVar[str] = "isekai-blob-ref:\\"
 
     @classmethod
-    def from_string(cls, refstr: str):
+    def from_string(cls, refstr: str) -> "BlobRef":
         """
-        Parses a string into a reference object.
+        Parses a string into a BlobRef object.
         """
         if not refstr.startswith(cls._prefix):
             raise ValueError(f"Invalid ref: {refstr}")
@@ -208,58 +324,102 @@ class BaseRef:
 
     def __str__(self) -> str:
         """
-        Returns the string representation of the reference.
+        Returns the string representation of the BlobRef.
         """
         return f"{self._prefix}{self.key}"
 
 
-@dataclass(frozen=True, slots=True)
-class PkRef(BaseRef):
+class ResourceRef:
     """
-    Represents a reference to a resource using a Key.
+    Represents a reference to a resource using a Key with optional attribute access.
 
-    Will be replaced by the resource's final primary key during Load.
-    """
+    Supports lazy attribute chaining: ResourceRef(key).group.name
 
-    _prefix = "isekai-pk-ref:\\"
-
-
-@dataclass(frozen=True, slots=True)
-class ModelRef(BaseRef):
-    """
-    Represents a reference to a resource using a Key.
-
-    Will be replaced by the resource's model instance during Load.
+    Will be replaced by the resource's model instance (or attribute value) during Load.
     """
 
-    _prefix = "isekai-model-ref:\\"
+    _prefix: ClassVar[str] = "isekai-resource-ref:\\"
 
+    def __init__(self, key: Key, attr_path: tuple[str, ...] = ()):
+        object.__setattr__(self, "_key", key)
+        object.__setattr__(self, "_ref_attr_path", attr_path)
 
-@dataclass(frozen=True, slots=True)
-class BlobRef(BaseRef):
-    """
-    Represents a reference to a blob resource using a Key.
+    @property
+    def key(self) -> Key:
+        return self._key  # type: ignore
 
-    Will be replaced by the resource's blob data during Load.
-    """
+    @property
+    def ref_attr_path(self) -> tuple[str, ...]:
+        return self._ref_attr_path  # type: ignore
 
-    _prefix = "isekai-blob-ref:\\"
+    def __getattr__(self, name: str) -> "ResourceRef":
+        """
+        Capture attribute access and return a new ResourceRef with extended attr_path.
+        """
+        # Return new ResourceRef with extended attribute path
+        new_ref = ResourceRef.__new__(ResourceRef)
+        # Access internal attributes via object.__getattribute__ to bypass __getattr__
+        key = object.__getattribute__(self, "_key")
+        attr_path = object.__getattribute__(self, "_ref_attr_path")
+        object.__setattr__(new_ref, "_key", key)
+        object.__setattr__(new_ref, "_ref_attr_path", attr_path + (name,))
+        return new_ref
+
+    def __eq__(self, other):
+        if not isinstance(other, ResourceRef):
+            return False
+        return self.key == other.key and self.ref_attr_path == other.ref_attr_path
+
+    def __hash__(self):
+        return hash((self.key, self.ref_attr_path))
+
+    @classmethod
+    def from_string(cls, refstr: str) -> "ResourceRef":
+        """
+        Parses a string into a ResourceRef object.
+        Format: "isekai-resource-ref:\\type:value" or "isekai-resource-ref:\\type:value::attr1.attr2"
+        """
+        if not refstr.startswith(cls._prefix):
+            raise ValueError(f"Invalid ref: {refstr}")
+
+        # Remove prefix
+        rest = refstr.removeprefix(cls._prefix)
+
+        # Check if there's an attribute path
+        if "::" in rest:
+            key_str, attr_str = rest.split("::", 1)
+            attr_path = tuple(attr_str.split("."))
+        else:
+            key_str = rest
+            attr_path = ()
+
+        key = Key.from_string(key_str)
+        return cls(key=key, attr_path=attr_path)
+
+    def __str__(self) -> str:
+        """
+        Returns the string representation of the ResourceRef.
+        """
+        base = f"{self._prefix}{self.key}"
+        if self.ref_attr_path:
+            return f"{base}::{'.'.join(self.ref_attr_path)}"
+        return base
 
 
 class Resolver(Protocol):
     """
     A resolver function that takes a ref and returns the appropriate value:
     - BlobRef -> FileProxy
-    - PkRef -> database PK (int | str)
-    - ModelRef -> model instance
+    - ResourceRef -> Any (due to attribute chaining)
+    - ModelRef -> Any (due to attribute chaining)
     """
 
     @overload
     def __call__(self, ref: BlobRef) -> FileProxy: ...
     @overload
-    def __call__(self, ref: PkRef) -> int | str: ...
+    def __call__(self, ref: ResourceRef) -> Any: ...
     @overload
-    def __call__(self, ref: ModelRef) -> "Model": ...
+    def __call__(self, ref: ModelRef) -> Any: ...
 
 
 @dataclass

@@ -92,6 +92,18 @@ class AuthorProfile(models.Model):
         return f"{self.author.name}'s Profile"
 
 
+class Book(models.Model):
+    title = models.CharField(max_length=200)
+    author = models.ForeignKey(Author, on_delete=models.CASCADE)
+    page_count = models.IntegerField()  # Required integer field
+
+    class Meta:
+        app_label = "testapp"
+
+    def __str__(self):
+        return self.title
+
+
 class ConcreteResource(AbstractResource):
     seeders = [
         CSVSeeder(csv_filename="tests/files/test_data.csv"),

@@ -246,6 +246,66 @@ class BlobRef(BaseRef):
     _prefix = "isekai-blob-ref:\\"
 
 
+@dataclass(frozen=True, slots=True)
+class ResourceRef:
+    """
+    Represents a reference to a resource using a Key with optional attribute access.
+
+    Supports lazy attribute chaining: ResourceRef(key).group.name
+
+    Will be replaced by the resource's model instance (or attribute value) during Load.
+    """
+
+    key: Key
+    attr_path: tuple[str, ...] = ()
+    _prefix: ClassVar[str] = "isekai-resource-ref:\\"
+
+    def __getattr__(self, name: str) -> "ResourceRef":
+        """
+        Capture attribute access and return a new ResourceRef with extended attr_path.
+        """
+        # Avoid infinite recursion for dataclass special attributes
+        if name in ("key", "attr_path", "_prefix"):
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{name}'"
+            )
+
+        # Return new ResourceRef with extended attribute path
+        return ResourceRef(key=self.key, attr_path=self.attr_path + (name,))
+
+    @classmethod
+    def from_string(cls, refstr: str) -> "ResourceRef":
+        """
+        Parses a string into a ResourceRef object.
+        Format: "isekai-resource-ref:\\type:value" or "isekai-resource-ref:\\type:value::attr1.attr2"
+        """
+        if not refstr.startswith(cls._prefix):
+            raise ValueError(f"Invalid ref: {refstr}")
+
+        # Remove prefix
+        rest = refstr.removeprefix(cls._prefix)
+
+        # Check if there's an attribute path
+        if "::" in rest:
+            key_str, attr_str = rest.split("::", 1)
+            attr_path = tuple(attr_str.split("."))
+        else:
+            key_str = rest
+            attr_path = ()
+
+        key = Key.from_string(key_str)
+        return cls(key=key, attr_path=attr_path)
+
+    def __str__(self) -> str:
+        """
+        Returns the string representation of the ResourceRef.
+        """
+        base = f"{self._prefix}{self.key}"
+        if self.attr_path:
+            return f"{base}::{'.'.join(self.attr_path)}"
+        return base
+
+
 class Resolver(Protocol):
     """
     A resolver function that takes a ref and returns the appropriate value:

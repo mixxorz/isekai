@@ -6,7 +6,7 @@ from django.core.files.base import ContentFile
 from django.db import connection, models, transaction
 from modelcluster.fields import ParentalKey, ParentalManyToManyField
 
-from isekai.types import BaseRef, BlobRef, Key, ModelRef, PkRef, Resolver, Spec
+from isekai.types import BaseRef, BlobRef, Key, ModelRef, Resolver, ResourceRef, Spec
 
 
 class BaseLoader:
@@ -34,8 +34,8 @@ class ModelLoader(BaseLoader):
         # Track state
         key_to_object = {}
         created_objects = []
-        pending_fks = []  # For PkRef in _id fields
-        pending_fk_instances = []  # For ModelRef in FK fields
+        pending_fks = []  # For ResourceRef in _id fields
+        pending_fk_instances = []  # For ResourceRef in FK fields
         pending_m2ms = []
 
         with transaction.atomic(), connection.constraint_checks_disabled():
@@ -76,16 +76,14 @@ class ModelLoader(BaseLoader):
                 m2m_manager = getattr(key_to_object[obj_key], field_name)
                 resolved_values = []
                 for ref in ref_values:
-                    if isinstance(ref, PkRef):
-                        if ref.key in key_to_object:
-                            resolved_values.append(key_to_object[ref.key].pk)
-                        else:
-                            resolved_values.append(resolver(ref))
-                    elif isinstance(ref, ModelRef):
+                    if isinstance(ref, ResourceRef):
                         if ref.key in key_to_object:
                             resolved_values.append(key_to_object[ref.key])
                         else:
                             resolved_values.append(resolver(ref))
+                    elif isinstance(ref, ModelRef):
+                        # ModelRef always references external objects
+                        resolved_values.append(resolver(ref))
                     else:
                         resolved_values.append(ref)
                 m2m_manager.set(resolved_values)
@@ -161,12 +159,12 @@ class ModelLoader(BaseLoader):
                 with file_ref.open() as f:
                     obj_fields[field_name] = File(ContentFile(f.read()), file_ref.name)
 
-            elif isinstance(field_value, PkRef):
+            elif isinstance(field_value, ResourceRef):
                 if field and isinstance(
                     field, models.ForeignKey | models.OneToOneField | ParentalKey
                 ):
                     if field_name.endswith("_id"):
-                        # PkRef in FK ID field (e.g., author_id) - use PK value directly
+                        # ResourceRef in FK ID field (e.g., author_id) - use PK value directly
                         if field_value.key in key_to_spec:
                             # Internal ref - use temp value, schedule for update
                             obj_fields[field_name] = key_to_temp_fk[field_value.key]
@@ -175,25 +173,7 @@ class ModelLoader(BaseLoader):
                             # External ref - resolve immediately
                             obj_fields[field_name] = resolver(field_value)
                     else:
-                        # PkRef in FK field (e.g., author) - Django expects model instance, not PK
-                        raise ValueError(
-                            f"PkRef not allowed in FK field {field_name}. Use ModelRef for FK fields or PkRef with {field_name}_id."
-                        )
-                else:
-                    # PkRef in non-FK field (likely JSON) - skip for now
-                    pass
-
-            elif isinstance(field_value, ModelRef):
-                if field and isinstance(
-                    field, models.ForeignKey | models.OneToOneField | ParentalKey
-                ):
-                    if field_name.endswith("_id"):
-                        # ModelRef in FK ID field - Django expects PK value, not instance
-                        raise ValueError(
-                            f"ModelRef not allowed in FK ID field {field_name}. Use PkRef for _id fields."
-                        )
-                    else:
-                        # ModelRef in FK field (e.g., author) - Django expects model instance
+                        # ResourceRef in FK field (e.g., author) - Django expects model instance
                         if field_value.key in key_to_spec:
                             # Internal ref - will be resolved after all objects are created
                             pending_fk_instances.append(
@@ -204,17 +184,28 @@ class ModelLoader(BaseLoader):
                             # External ref - resolve immediately to model instance
                             obj_fields[field_name] = resolver(field_value)
                 else:
+                    # ResourceRef in non-FK field (likely JSON) - skip for now
+                    pass
+
+            elif isinstance(field_value, ModelRef):
+                # ModelRef always references external DB objects, never internal refs
+                if field and isinstance(
+                    field, models.ForeignKey | models.OneToOneField | ParentalKey
+                ):
+                    # ModelRef in FK field - resolve immediately to model instance
+                    obj_fields[field_name] = resolver(field_value)
+                else:
                     # ModelRef in non-FK field (likely JSON) - skip for now, will be resolved later
                     pass
 
             elif isinstance(field_value, list) and any(
-                isinstance(v, BaseRef) for v in field_value
+                isinstance(v, BaseRef | ResourceRef | ModelRef) for v in field_value
             ):
                 if field and isinstance(
                     field, models.ManyToManyField | ParentalManyToManyField
                 ):
-                    # M2M fields accept both PkRef (for PK values) and ModelRef (for instances)
-                    # This matches Django's behavior where m2m.set() accepts both
+                    # M2M fields accept both ResourceRef and ModelRef
+                    # This matches Django's behavior where m2m.set() accepts both PKs and instances
                     pending_m2ms.append((key, field_name, field_value))
                 else:
                     # List with refs in non-M2M field (likely JSON) - skip for now
@@ -262,7 +253,7 @@ class ModelLoader(BaseLoader):
 
     def _has_refs(self, data):
         """Check if data contains reference objects."""
-        if isinstance(data, BaseRef):
+        if isinstance(data, BaseRef | ResourceRef | ModelRef):
             return True
         elif isinstance(data, dict):
             return any(self._has_refs(v) for v in data.values())
@@ -271,17 +262,14 @@ class ModelLoader(BaseLoader):
         return False
 
     def _resolve_refs(self, data, key_to_object, resolver):
-        """Recursively resolve PkRef and ModelRef objects in nested data."""
-        if isinstance(data, PkRef):
-            return (
-                key_to_object[data.key].pk
-                if data.key in key_to_object
-                else resolver(data)
-            )
-        elif isinstance(data, ModelRef):
+        """Recursively resolve ResourceRef and ModelRef objects in nested data."""
+        if isinstance(data, ResourceRef):
             return (
                 key_to_object[data.key] if data.key in key_to_object else resolver(data)
             )
+        elif isinstance(data, ModelRef):
+            # ModelRef always references external objects
+            return resolver(data)
         elif isinstance(data, dict):
             return {
                 k: self._resolve_refs(v, key_to_object, resolver)

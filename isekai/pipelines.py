@@ -1,6 +1,7 @@
 import logging
 import random
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, overload
 
 from django.apps import apps
@@ -149,6 +150,18 @@ class Pipeline:
             metadata={},
         )
 
+    def _run_extractors(
+        self, key: Key, extractors: list[Any]
+    ) -> TextResource | BlobResource | None:
+        """Run extractors on a key and return the first successful result.
+
+        This method is designed to run in a thread pool for parallel extraction.
+        """
+        for extractor in extractors:
+            if extracted_resource := extractor.extract(key):
+                return extracted_resource
+        return None
+
     def extract(self) -> OperationResult:
         """Extracts data from a source."""
         logger.setLevel(logging.INFO)
@@ -156,66 +169,73 @@ class Pipeline:
 
         logger.info(f"Using {len(self.extractors)} extractors")
 
-        resources = Resource.objects.filter(status=Resource.Status.SEEDED)
+        resources = list(Resource.objects.filter(status=Resource.Status.SEEDED))
 
-        logger.info(f"Found {resources.count()} seeded resources to process")
+        logger.info(f"Found {len(resources)} seeded resources to process")
 
-        for resource in resources:
-            logger.info(f"Extracting resource: {resource.key}")
-
-            try:
+        # Submit extraction tasks to thread pool
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            # Map futures to resources
+            future_to_resource = {}
+            for resource in resources:
+                logger.info(f"Extracting resource: {resource.key}")
                 key = Key.from_string(resource.key)
+                future = executor.submit(self._run_extractors, key, self.extractors)
+                future_to_resource[future] = resource
 
-                # Extract using the first extractor that can handle the resource
-                extracted_resource = None
-                for extractor in self.extractors:
-                    if extracted_resource := extractor.extract(key):
-                        break
+            # Process results as they complete
+            for future in as_completed(future_to_resource):
+                resource = future_to_resource[future]
 
-                if extracted_resource:
-                    resource.mime_type = extracted_resource.mime_type
+                try:
+                    extracted_resource = future.result()
 
-                    # Merge metadata
-                    if resource.metadata is None:
-                        resource.metadata = {}
+                    if extracted_resource:
+                        resource.mime_type = extracted_resource.mime_type
 
-                    resource.metadata.update(dict(extracted_resource.metadata))
+                        # Merge metadata
+                        if resource.metadata is None:
+                            resource.metadata = {}
 
-                    if isinstance(extracted_resource, TextResource):
-                        resource.data_type = "text"
-                        resource.text_data = extracted_resource.text
+                        resource.metadata.update(dict(extracted_resource.metadata))
 
-                        logger.info(
-                            f"Extracted text data ({extracted_resource.mime_type}) for {resource.key}"
-                        )
-                    elif isinstance(extracted_resource, BlobResource):
-                        resource.data_type = "blob"
-                        # Read the temporary file and save it to the model's FileField
-                        with extracted_resource.file_ref.open() as temp_file:
-                            resource.blob_data.save(
-                                extracted_resource.filename,
-                                ContentFile(temp_file.read()),
-                                save=False,
+                        if isinstance(extracted_resource, TextResource):
+                            resource.data_type = "text"
+                            resource.text_data = extracted_resource.text
+
+                            logger.info(
+                                f"Extracted text data ({extracted_resource.mime_type}) for {resource.key}"
+                            )
+                        elif isinstance(extracted_resource, BlobResource):
+                            resource.data_type = "blob"
+                            # Read the temporary file and save it to the model's FileField
+                            with extracted_resource.file_ref.open() as temp_file:
+                                resource.blob_data.save(
+                                    extracted_resource.filename,
+                                    ContentFile(temp_file.read()),
+                                    save=False,
+                                )
+
+                            # Clean up the temporary file
+                            assert isinstance(
+                                extracted_resource.file_ref, PathFileProxy
+                            )
+                            extracted_resource.file_ref.path.unlink(missing_ok=True)
+
+                            logger.info(
+                                f"Extracted blob data ({extracted_resource.mime_type}) for {resource.key}"
                             )
 
-                        # Clean up the temporary file
-                        assert isinstance(extracted_resource.file_ref, PathFileProxy)
-                        extracted_resource.file_ref.path.unlink(missing_ok=True)
+                    resource.transition_to(Resource.Status.EXTRACTED)
+                    resource.save()
 
-                        logger.info(
-                            f"Extracted blob data ({extracted_resource.mime_type}) for {resource.key}"
-                        )
+                    logger.info(f"Successfully extracted: {resource.key}")
 
-                resource.transition_to(Resource.Status.EXTRACTED)
-                resource.save()
+                except Exception as e:
+                    resource.last_error = f"{e.__class__.__name__}: {str(e)}"
+                    resource.save()
 
-                logger.info(f"Successfully extracted: {resource.key}")
-
-            except Exception as e:
-                resource.last_error = f"{e.__class__.__name__}: {str(e)}"
-                resource.save()
-
-                logger.error(f"Failed to extract {resource.key}: {e}")
+                    logger.error(f"Failed to extract {resource.key}: {e}")
 
         extracted_count = sum(
             1 for r in resources if r.status == Resource.Status.EXTRACTED

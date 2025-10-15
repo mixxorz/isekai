@@ -201,7 +201,7 @@ class ModelLoader(BaseLoader):
 
         # Process each field
         for field_name, field_value in spec.attributes.items():
-            field = model_fields.get(field_name)
+            field = model_fields[field_name]
 
             if isinstance(field_value, BlobRef):
                 # Handle blob fields immediately
@@ -213,14 +213,12 @@ class ModelLoader(BaseLoader):
                 if field_value.key in key_to_spec:
                     # Internal ref - defer resolution until after all objects are created
                     # Set appropriate temp value for ANY field type to satisfy NOT NULL
-                    # Check if field exists - can be None for virtual/non-model fields
-                    if field:
-                        temp_value = self._get_temp_value_for_field(
-                            field, field_value.key, key_to_temp_fk
-                        )
-                        if temp_value is not None:
-                            obj_fields[field_name] = temp_value
-                    # Mark for later resolution regardless
+                    temp_value = self._get_temp_value_for_field(
+                        field, field_value.key, key_to_temp_fk
+                    )
+                    if temp_value is not None:
+                        obj_fields[field_name] = temp_value
+                    # Mark for later resolution
                     pending_refs.append((key, field_name, field_value))
                 else:
                     # External ref - resolve immediately
@@ -229,7 +227,7 @@ class ModelLoader(BaseLoader):
             elif isinstance(field_value, ModelRef):
                 # ModelRef always references external DB objects, never internal refs
                 # Resolve immediately for FK fields; skip for JSON fields (resolved later)
-                if field and field.get_internal_type() == "JSONField":
+                if field.get_internal_type() == "JSONField":
                     # JSON field - skip for now, will be resolved in JSON phase
                     pass
                 else:
@@ -239,9 +237,7 @@ class ModelLoader(BaseLoader):
             elif isinstance(field_value, list) and any(
                 isinstance(v, BaseRef | ResourceRef | ModelRef) for v in field_value
             ):
-                if field and isinstance(
-                    field, models.ManyToManyField | ParentalManyToManyField
-                ):
+                if isinstance(field, models.ManyToManyField | ParentalManyToManyField):
                     # M2M fields accept both ResourceRef and ModelRef
                     # This matches Django's behavior where m2m.set() accepts both PKs and instances
                     pending_m2ms.append((key, field_name, field_value))
@@ -251,10 +247,8 @@ class ModelLoader(BaseLoader):
 
             else:
                 # Regular field - but skip JSON fields with refs since reference objects aren't JSON serializable
-                if (
-                    field
-                    and field.get_internal_type() == "JSONField"
-                    and self._has_refs(field_value)
+                if field.get_internal_type() == "JSONField" and self._has_refs(
+                    field_value
                 ):
                     pass  # Will be resolved and saved in JSON phase after all objects exist
                 else:

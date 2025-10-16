@@ -151,14 +151,14 @@ class Pipeline:
         )
 
     def _run_extractors(
-        self, key: Key, extractors: list[Any]
+        self, key: Key, metadata: dict[str, Any] | None, extractors: list[Any]
     ) -> TextResource | BlobResource | None:
         """Run extractors on a key and return the first successful result.
 
         This method is designed to run in a thread pool for parallel extraction.
         """
         for extractor in extractors:
-            if extracted_resource := extractor.extract(key):
+            if extracted_resource := extractor.extract(key, metadata):
                 return extracted_resource
         return None
 
@@ -180,7 +180,9 @@ class Pipeline:
             for resource in resources:
                 logger.info(f"Extracting resource: {resource.key}")
                 key = Key.from_string(resource.key)
-                future = executor.submit(self._run_extractors, key, self.extractors)
+                future = executor.submit(
+                    self._run_extractors, key, resource.metadata, self.extractors
+                )
                 future_to_resource[future] = resource
 
             # Process results as they complete

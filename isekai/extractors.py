@@ -3,7 +3,7 @@ import re
 import tempfile
 import time
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 import requests
@@ -19,7 +19,9 @@ TEXT_MIME_TYPES = {
 
 
 class BaseExtractor:
-    def extract(self, key: Key) -> TextResource | BlobResource | None:
+    def extract(
+        self, key: Key, metadata: dict[str, Any] | None = None
+    ) -> TextResource | BlobResource | None:
         return None
 
 
@@ -36,7 +38,9 @@ class HTTPExtractor(BaseExtractor):
         self.timeout = timeout
         self.no_retry_status_codes = no_retry_status_codes or {404}
 
-    def extract(self, key: Key) -> TextResource | BlobResource | None:
+    def extract(
+        self, key: Key, metadata: dict[str, Any] | None = None
+    ) -> TextResource | BlobResource | None:
         # We only handle keys of type "url"
         if key.type != "url":
             return None

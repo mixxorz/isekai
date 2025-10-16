@@ -16,7 +16,7 @@ from isekai.types import Spec, TextResource
 
 
 class FooBarExtractor(BaseExtractor):
-    def extract(self, key):
+    def extract(self, key, metadata=None):
         if not key.type == "foo":
             return None
 

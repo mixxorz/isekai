@@ -4,6 +4,7 @@ from isekai.types import (
     ModelRef,
     ResourceRef,
     Spec,
+    ref,
 )
 from tests.test_models import pytest
 
@@ -659,8 +660,8 @@ class TestSpec:
         ]
 
         assert len(refs) == len(expected_refs)
-        for ref in expected_refs:
-            assert ref in refs
+        for expected_ref in expected_refs:
+            assert expected_ref in refs
 
     def test_find_refs_no_refs(self):
         spec = Spec(
@@ -677,3 +678,116 @@ class TestSpec:
 
         refs = spec.find_refs()
         assert refs == []
+
+    def test_find_refs_with_single_string_ref(self):
+        """Test finding a single ResourceRef embedded in a string."""
+        author_key = Key(type="url", value="https://example.com/author/1")
+        spec = Spec(
+            content_type="testapp.Article",
+            attributes={
+                "title": f"Article by {ref(ResourceRef(author_key).name)}",
+            },
+        )
+
+        refs = spec.find_refs()
+
+        # Should find the ResourceRef embedded in the string
+        expected_ref = ResourceRef(author_key).name
+        assert len(refs) == 1
+        assert expected_ref in refs
+
+    def test_find_refs_with_multiple_string_refs(self):
+        """Test finding multiple refs embedded in a single string."""
+        author_key = Key(type="url", value="https://example.com/author/1")
+        category_key = Key(type="url", value="https://example.com/category/tech")
+        spec = Spec(
+            content_type="testapp.Article",
+            attributes={
+                "description": f"Written by {ref(ResourceRef(author_key).name)} in {ref(ResourceRef(category_key).name)}",
+            },
+        )
+
+        refs = spec.find_refs()
+
+        # Should find both ResourceRefs embedded in the string
+        assert len(refs) == 2
+        assert ResourceRef(author_key).name in refs
+        assert ResourceRef(category_key).name in refs
+
+    def test_find_refs_with_blob_ref_in_string(self):
+        """Test finding BlobRef embedded in a string."""
+        image_key = Key(type="url", value="https://example.com/avatar.jpg")
+        spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "bio": f"Profile picture: {ref(BlobRef(image_key))}",
+            },
+        )
+
+        refs = spec.find_refs()
+
+        # Should find the BlobRef embedded in the string
+        expected_ref = BlobRef(image_key)
+        assert len(refs) == 1
+        assert expected_ref in refs
+
+    def test_find_refs_ignores_model_ref_in_string(self):
+        """Test that ModelRef in string is ignored (not a dependency)."""
+        spec = Spec(
+            content_type="testapp.Article",
+            attributes={
+                "author": ModelRef("testapp.Author", pk=42).pk,
+                "description": f"By {ref(ModelRef('testapp.Author', pk=42).name)}",
+            },
+        )
+
+        refs = spec.find_refs()
+
+        # Should not find any refs (ModelRef is not a dependency)
+        assert len(refs) == 0
+
+    def test_find_refs_with_nested_string_refs(self):
+        """Test finding refs in strings within nested structures."""
+        author_key = Key(type="url", value="https://example.com/author/1")
+        image_key = Key(type="url", value="https://example.com/image.jpg")
+        spec = Spec(
+            content_type="testapp.Article",
+            attributes={
+                "metadata": {
+                    "credit": f"Photo by {ref(ResourceRef(author_key).name)}",
+                    "info": {
+                        "caption": f"See image at {ref(BlobRef(image_key))}",
+                    },
+                },
+            },
+        )
+
+        refs = spec.find_refs()
+
+        # Should find both refs in nested strings
+        assert len(refs) == 2
+        assert ResourceRef(author_key).name in refs
+        assert BlobRef(image_key) in refs
+
+    def test_find_refs_mixed_direct_and_string_refs(self):
+        """Test finding both direct refs and refs embedded in strings."""
+        author_key = Key(type="url", value="https://example.com/author/1")
+        image_key = Key(type="url", value="https://example.com/image.jpg")
+        category_key = Key(type="url", value="https://example.com/category/tech")
+
+        spec = Spec(
+            content_type="testapp.Article",
+            attributes={
+                "featured_image": BlobRef(image_key),  # Direct BlobRef
+                "author": ResourceRef(author_key).pk,  # Direct ResourceRef
+                "description": f"Category: {ref(ResourceRef(category_key).name)}",  # String ref
+            },
+        )
+
+        refs = spec.find_refs()
+
+        # Should find all three refs (2 direct + 1 in string)
+        assert len(refs) == 3
+        assert BlobRef(image_key) in refs
+        assert ResourceRef(author_key).pk in refs
+        assert ResourceRef(category_key).name in refs

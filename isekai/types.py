@@ -1,5 +1,6 @@
 import io
 import os
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -180,6 +181,16 @@ class Spec:
                 if ref_str not in seen:
                     seen.add(ref_str)
                     refs.append(value)
+            elif isinstance(value, str):
+                # Find refs embedded in strings (created with ref() helper)
+                string_refs = find_refs_in_string(value)
+                for _, ref_obj in string_refs:
+                    # Only collect BlobRef and ResourceRef, not ModelRef
+                    if isinstance(ref_obj, BlobRef | ResourceRef):
+                        ref_str = str(ref_obj)
+                        if ref_str not in seen:
+                            seen.add(ref_str)
+                            refs.append(ref_obj)
             elif isinstance(value, dict):
                 for v in value.values():
                     collect_refs(v)
@@ -444,6 +455,43 @@ class ExtractError(Exception):
 
 class TransformError(Exception):
     pass
+
+
+def find_refs_in_string(
+    text: str,
+) -> list[tuple[str, "ResourceRef | ModelRef | BlobRef"]]:
+    """
+    Find all refs embedded in a string with %REFEND% delimiter.
+
+    Returns list of (ref_string_with_delimiter, ref_object) tuples.
+
+    Example:
+        Input: "Hello isekai-resource-ref:\\gen:user1::name%REFEND%!"
+        Output: [("isekai-resource-ref:\\gen:user1::name%REFEND%", ResourceRef(...))]
+    """
+    pattern = r"(isekai-(?:resource-ref|model-ref|blob-ref):\\[^%]+)%REFEND%"
+    refs = []
+
+    for match in re.finditer(pattern, text):
+        ref_string = match.group(1)  # The ref without %REFEND%
+        full_match = match.group(0)  # The ref with %REFEND%
+
+        # Parse the ref string
+        try:
+            if ref_string.startswith("isekai-resource-ref:\\"):
+                ref_obj = ResourceRef.from_string(ref_string)
+                refs.append((full_match, ref_obj))
+            elif ref_string.startswith("isekai-model-ref:\\"):
+                ref_obj = ModelRef.from_string(ref_string)
+                refs.append((full_match, ref_obj))
+            elif ref_string.startswith("isekai-blob-ref:\\"):
+                ref_obj = BlobRef.from_string(ref_string)
+                refs.append((full_match, ref_obj))
+        except ValueError:
+            # Invalid ref format - skip it
+            pass
+
+    return refs
 
 
 def ref(reference: "ResourceRef | ModelRef | BlobRef") -> str:

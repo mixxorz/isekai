@@ -1,4 +1,3 @@
-import re
 import uuid
 
 from django.apps import apps
@@ -8,7 +7,15 @@ from django.db import connection, models, transaction
 from django.utils import timezone
 from modelcluster.fields import ParentalKey, ParentalManyToManyField
 
-from isekai.types import BlobRef, Key, ModelRef, Resolver, ResourceRef, Spec
+from isekai.types import (
+    BlobRef,
+    Key,
+    ModelRef,
+    Resolver,
+    ResourceRef,
+    Spec,
+    find_refs_in_string,
+)
 
 
 class BaseLoader:
@@ -311,46 +318,12 @@ class ModelLoader(BaseLoader):
         if isinstance(data, BlobRef | ResourceRef | ModelRef):
             return True
         elif isinstance(data, str):
-            return bool(self._find_refs_in_string(data))
+            return bool(find_refs_in_string(data))
         elif isinstance(data, dict):
             return any(self._has_refs(v) for v in data.values())
         elif isinstance(data, list):
             return any(self._has_refs(item) for item in data)
         return False
-
-    def _find_refs_in_string(
-        self, text: str
-    ) -> list[tuple[str, ResourceRef | ModelRef | BlobRef]]:
-        """
-        Find all refs embedded in a string with %REFEND% delimiter.
-
-        Returns list of (ref_string_with_delimiter, ref_object) tuples.
-        Example: "Hello isekai-resource-ref:\\gen:user1::name%REFEND%!"
-                 -> [("isekai-resource-ref:\\gen:user1::name%REFEND%", ResourceRef(...))]
-        """
-        pattern = r"(isekai-(?:resource-ref|model-ref|blob-ref):\\[^%]+)%REFEND%"
-        refs = []
-
-        for match in re.finditer(pattern, text):
-            ref_string = match.group(1)  # The ref without %REFEND%
-            full_match = match.group(0)  # The ref with %REFEND%
-
-            # Parse the ref string
-            try:
-                if ref_string.startswith("isekai-resource-ref:\\"):
-                    ref_obj = ResourceRef.from_string(ref_string)
-                    refs.append((full_match, ref_obj))
-                elif ref_string.startswith("isekai-model-ref:\\"):
-                    ref_obj = ModelRef.from_string(ref_string)
-                    refs.append((full_match, ref_obj))
-                elif ref_string.startswith("isekai-blob-ref:\\"):
-                    ref_obj = BlobRef.from_string(ref_string)
-                    refs.append((full_match, ref_obj))
-            except ValueError:
-                # Invalid ref format - skip it
-                pass
-
-        return refs
 
     def _resolve_string_refs(self, text: str, key_to_object, resolver) -> str:
         """
@@ -360,7 +333,7 @@ class ModelLoader(BaseLoader):
             Input: "Hello isekai-resource-ref:\\gen:user1::name%REFEND%!"
             Output: "Hello John!"
         """
-        refs = self._find_refs_in_string(text)
+        refs = find_refs_in_string(text)
 
         # Replace each ref with its resolved value
         resolved_text = text

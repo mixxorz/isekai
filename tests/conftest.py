@@ -20,10 +20,8 @@ def _setup_wagtail_initial_data(django_db_setup, django_db_blocker):
         from django.conf import settings
         from django.contrib.contenttypes.models import ContentType
         from wagtail.models import Page, Site
-        from wagtail.models.collections import (
-            Collection,  # type: ignore[import-not-found]
-        )
         from wagtail.models.i18n import Locale
+        from wagtail.models.media import Collection
 
         # Create default locale
         if not Locale.objects.exists():

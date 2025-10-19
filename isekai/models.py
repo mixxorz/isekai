@@ -21,7 +21,7 @@ class AbstractResource(models.Model):
         TRANSFORMED = "transformed", "Transformed"
         LOADED = "loaded", "Loaded"
 
-    key = models.CharField(max_length=255, primary_key=True, db_index=True)
+    key = models.CharField(max_length=1024, primary_key=True, db_index=True)
 
     # Data
     mime_type = models.CharField(max_length=100, blank=True)
@@ -49,7 +49,7 @@ class AbstractResource(models.Model):
         ContentType, on_delete=models.CASCADE, blank=True, null=True
     )
     target_spec: dict[str, Any] = models.JSONField(blank=True, null=True)  # type: ignore[assignment]
-    target_object_id = models.PositiveIntegerField(blank=True, null=True)
+    target_object_id = models.CharField(max_length=36, blank=True)
     target_object = GenericForeignKey("target_content_type", "target_object_id")
 
     # Audit fields

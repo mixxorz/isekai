@@ -1913,7 +1913,7 @@ class TestLoad:
         )  # Status unchanged
         assert resource.last_error is not None
         assert "Unable to resolve reference: " in resource.last_error
-        assert resource.target_object_id is None
+        assert not resource.target_object_id
 
         # No Article objects should have been created
         assert Article.objects.count() == 0
@@ -1949,7 +1949,7 @@ class TestLoad:
         resource.refresh_from_db()
         assert resource.status == ConcreteResource.Status.TRANSFORMED
         assert resource.last_error is not None
-        assert resource.target_object_id is None
+        assert not resource.target_object_id
 
         # No Author objects should have been created
         assert Author.objects.count() == 0
@@ -2010,13 +2010,13 @@ class TestLoad:
         # Author should have failed with error recorded
         assert author_resource.status == ConcreteResource.Status.TRANSFORMED
         assert author_resource.last_error is not None
-        assert author_resource.target_object_id is None
+        assert not author_resource.target_object_id
 
         # Article should remain unprocessed (no error recorded, still TRANSFORMED)
         # because processing stopped after author failed
         assert article_resource.status == ConcreteResource.Status.TRANSFORMED
-        assert not article_resource.last_error  # No error because it wasn't processed
-        assert article_resource.target_object_id is None
+        assert not article_resource.last_error
+        assert not article_resource.target_object_id
 
         # No database objects should have been created
         assert Author.objects.count() == 0
@@ -2298,23 +2298,19 @@ class TestLoad:
 
         # Resources with unready dependencies should remain TRANSFORMED (not processed)
         assert dependent_article_resource.status == ConcreteResource.Status.TRANSFORMED
-        assert dependent_article_resource.target_object_id is None
+        assert not dependent_article_resource.target_object_id
         assert dependent_article_resource.loaded_at is None
-        assert (
-            not dependent_article_resource.last_error
-        )  # No error because it wasn't processed
+        assert not dependent_article_resource.last_error
 
         # Resources that depend on unready resources should also remain TRANSFORMED
         assert dependent_profile_resource.status == ConcreteResource.Status.TRANSFORMED
-        assert dependent_profile_resource.target_object_id is None
+        assert not dependent_profile_resource.target_object_id
         assert dependent_profile_resource.loaded_at is None
-        assert (
-            not dependent_profile_resource.last_error
-        )  # No error because it wasn't processed
+        assert not dependent_profile_resource.last_error
 
         # The base resource should remain unchanged in MINED status
         assert base_author_resource.status == ConcreteResource.Status.MINED
-        assert base_author_resource.target_object_id is None
+        assert not base_author_resource.target_object_id
         assert base_author_resource.loaded_at is None
 
         # Verify only one Author object was created (the independent one)

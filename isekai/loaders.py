@@ -380,9 +380,15 @@ class ModelLoader(BaseLoader):
         """Recursively resolve refs in nested structures (dicts/lists) for JSON fields.
 
         Resolves ResourceRef and ModelRef to their final values by traversing attr_path.
+        Also resolves embedded refs in strings.
         """
         if isinstance(data, ResourceRef | ModelRef):
             return self._resolve_ref(data, key_to_object, resolver)
+        elif isinstance(data, str):
+            # Check if string contains embedded refs and resolve them
+            if self._has_refs(data):
+                return self._resolve_string_refs(data, key_to_object, resolver)
+            return data
         elif isinstance(data, dict):
             return {
                 k: self._resolve_nested_refs(v, key_to_object, resolver)

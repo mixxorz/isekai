@@ -1533,6 +1533,57 @@ class TestModelLoader:
         assert article.title == "Co-authored by Alice & Bob!"
         assert article.content == "Contact: alice@example.com or bob@example.com."
 
+    def test_load_with_string_ref_in_json_field(self):
+        """Test loading with ResourceRef embedded in string inside JSON field."""
+
+        def resolver(ref):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
+
+        loader = ModelLoader()
+
+        # Create author spec
+        author_key = Key(type="author", value="json_string_author")
+        author_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "JSON String Author",
+                "email": "jsonstring@example.com",
+            },
+        )
+
+        # Create profile spec with JSON field containing string with embedded ref
+        profile_key = Key(type="profile", value="json_string_profile")
+        profile_spec = Spec(
+            content_type="testapp.AuthorProfile",
+            attributes={
+                "author_id": ResourceRef(author_key).pk,
+                "website": "https://jsonstring.example.com",
+                "settings": {
+                    "description": f"Profile for {ref(ResourceRef(author_key).name)}",
+                    "contact_email": f"contact-{ref(ResourceRef(author_key).name)}@example.com",
+                    "theme": "dark",
+                },
+            },
+        )
+
+        loader.load(
+            [(author_key, author_spec), (profile_key, profile_spec)],
+            resolver,
+        )
+
+        # Fetch from database to verify
+        author = Author.objects.get(email="jsonstring@example.com")
+        profile = AuthorProfile.objects.get(author=author)
+
+        # Verify JSON field has resolved string refs
+        assert profile.settings is not None
+        assert profile.settings["description"] == "Profile for JSON String Author"
+        assert (
+            profile.settings["contact_email"]
+            == "contact-JSON String Author@example.com"
+        )
+        assert profile.settings["theme"] == "dark"
+
 
 @pytest.mark.django_db
 @pytest.mark.database_backend

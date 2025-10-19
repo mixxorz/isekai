@@ -250,8 +250,8 @@ class TestWagtailPageLoader:
 
         assert report_index_resource.status == ConcreteResource.Status.LOADED
         assert report_page_resource.status == ConcreteResource.Status.LOADED
-        assert report_index_resource.target_object_id == created_report_index.pk
-        assert report_page_resource.target_object_id == created_report_page.pk
+        assert report_index_resource.target_object_id == str(created_report_index.pk)
+        assert report_page_resource.target_object_id == str(created_report_page.pk)
         assert report_index_resource.loaded_at == now
         assert report_page_resource.loaded_at == now
 

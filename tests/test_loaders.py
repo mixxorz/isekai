@@ -2170,7 +2170,7 @@ class TestLoad:
         assert author.name == "Idempotent Author"
         assert author.email == "idempotent@example.com"
         assert author.bio == {"test": "data"}
-        assert author.pk == resource.target_object_id
+        assert str(author.pk) == resource.target_object_id
 
         # Second load operation - should be no-op
         later = now + timezone.timedelta(hours=1)

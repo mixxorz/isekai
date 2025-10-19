@@ -49,7 +49,7 @@ class AbstractResource(models.Model):
         ContentType, on_delete=models.CASCADE, blank=True, null=True
     )
     target_spec: dict[str, Any] = models.JSONField(blank=True, null=True)  # type: ignore[assignment]
-    target_object_id = models.CharField(max_length=36, blank=True)
+    target_object_id = models.CharField(max_length=36, blank=True, default="")
     target_object = GenericForeignKey("target_content_type", "target_object_id")
 
     # Audit fields

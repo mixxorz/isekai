@@ -1,6 +1,6 @@
 [project]
 name = "isekai-django"
-version = "0.1.0a5"
+version = "0.1.0a6"
 description = "A Django package"
 readme = "README.md"
 authors = [

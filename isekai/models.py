@@ -21,7 +21,7 @@ class AbstractResource(models.Model):
         TRANSFORMED = "transformed", "Transformed"
         LOADED = "loaded", "Loaded"
 
-    key = models.CharField(max_length=1024, primary_key=True, db_index=True)
+    key = models.CharField(max_length=768, primary_key=True, db_index=True)
 
     # Data
     mime_type = models.CharField(max_length=100, blank=True)

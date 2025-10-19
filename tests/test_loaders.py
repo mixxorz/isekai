@@ -25,6 +25,7 @@ from tests.testapp.models import (
     Author,
     AuthorProfile,
     Book,
+    ClusterableArticle,
     ConcreteResource,
     Tag,
 )
@@ -310,7 +311,7 @@ class TestModelLoader:
             },
         )
 
-        objects = loader.load(
+        loader.load(
             [
                 (tag1_key, tag1_spec),
                 (tag2_key, tag2_spec),
@@ -320,21 +321,93 @@ class TestModelLoader:
             resolver,
         )
 
-        assert len(objects) == 4
-
-        # Find objects in results
-        tags = [obj[1] for obj in objects if isinstance(obj[1], Tag)]
-        author = next(obj[1] for obj in objects if isinstance(obj[1], Author))
-        article = next(obj[1] for obj in objects if isinstance(obj[1], Article))
+        # Fetch from database to verify persistence
+        author = Author.objects.get(email="m2m_modelref@example.com")
+        article = Article.objects.get(title="Article with ModelRef M2M")
+        tags = Tag.objects.filter(
+            name__in=["ModelRef Tag 1", "ModelRef Tag 2"]
+        ).order_by("name")
 
         assert len(tags) == 2
         assert article.author == author
 
-        # Check M2M relationships
-        article_tags = list(article.tags.all())
+        # Check M2M relationships from database
+        article_tags = list(article.tags.all().order_by("name"))
         assert len(article_tags) == 2
         tag_names = {tag.name for tag in article_tags}
         assert tag_names == {"ModelRef Tag 1", "ModelRef Tag 2"}
+
+    def test_load_with_m2m_resourceref_parental(self):
+        """Test loading M2M relationships with ResourceRef using ParentalManyToManyField."""
+
+        def resolver(ref):
+            raise AssertionError(f"Resolver should not be called, got ref: {ref}")
+
+        loader = ModelLoader()
+
+        # Create author spec
+        author_key = Key(type="author", value="m2m_parental_author")
+        author_spec = Spec(
+            content_type="testapp.Author",
+            attributes={
+                "name": "M2M Parental Author",
+                "email": "m2m_parental@example.com",
+            },
+        )
+
+        # Create tag specs
+        tag1_key = Key(type="tag", value="parental_tag1")
+        tag1_spec = Spec(
+            content_type="testapp.Tag",
+            attributes={"name": "Parental Tag 1"},
+        )
+
+        tag2_key = Key(type="tag", value="parental_tag2")
+        tag2_spec = Spec(
+            content_type="testapp.Tag",
+            attributes={"name": "Parental Tag 2"},
+        )
+
+        # Create article spec with M2M relationships using ResourceRef
+        article_key = Key(type="article", value="parental_m2m_article")
+        article_spec = Spec(
+            content_type="testapp.ClusterableArticle",
+            attributes={
+                "title": "Article with Parental M2M",
+                "content": "Testing ParentalManyToManyField with ResourceRef.",
+                "author_id": ResourceRef(author_key).pk,
+                "tags": [
+                    ResourceRef(tag1_key),  # ResourceRef in ParentalM2M
+                    ResourceRef(tag2_key),  # ResourceRef in ParentalM2M
+                ],
+            },
+        )
+
+        loader.load(
+            [
+                (tag1_key, tag1_spec),
+                (tag2_key, tag2_spec),
+                (author_key, author_spec),
+                (article_key, article_spec),
+            ],
+            resolver,
+        )
+
+        # Fetch objects from database to verify
+        author = Author.objects.get(email="m2m_parental@example.com")
+        article = ClusterableArticle.objects.get(title="Article with Parental M2M")
+        tags = Tag.objects.filter(
+            name__in=["Parental Tag 1", "Parental Tag 2"]
+        ).order_by("name")
+
+        assert len(tags) == 2
+        assert article.author == author
+
+        # Check M2M relationships from database
+        article_tags = list(article.tags.all().order_by("name"))
+        assert len(article_tags) == 2
+        tag_names = {tag.name for tag in article_tags}
+        assert tag_names == {"Parental Tag 1", "Parental Tag 2"}
 
     def test_load_with_m2m_internal_refs(self):
         """Test loading M2M relationships with ResourceRef to objects in same batch."""

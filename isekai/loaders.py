@@ -82,7 +82,8 @@ class ModelLoader(BaseLoader):
 
             # Set M2M relationships
             for obj_key, field_name, ref_values in pending_m2ms:
-                m2m_manager = getattr(key_to_object[obj_key], field_name)
+                obj = key_to_object[obj_key]
+                m2m_manager = getattr(obj, field_name)
                 resolved_values = []
                 for ref in ref_values:
                     if isinstance(ref, ResourceRef | ModelRef):
@@ -92,6 +93,10 @@ class ModelLoader(BaseLoader):
                     else:
                         resolved_values.append(ref)
                 m2m_manager.set(resolved_values)
+
+                # Save the object to persist ParentalManyToManyField relationships
+                # Standard Django M2M fields don't need this, but ParentalManyToManyField does
+                obj.save()
 
             connection.check_constraints()
 

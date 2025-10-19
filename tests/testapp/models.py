@@ -1,6 +1,8 @@
 from typing import TYPE_CHECKING
 
 from django.db import models
+from modelcluster.fields import ParentalManyToManyField
+from modelcluster.models import ClusterableModel
 from wagtail.admin.panels import FieldPanel
 from wagtail.fields import RichTextField
 from wagtail.models import Page
@@ -96,6 +98,21 @@ class Book(models.Model):
     title = models.CharField(max_length=200)
     author = models.ForeignKey(Author, on_delete=models.CASCADE)
     page_count = models.IntegerField()  # Required integer field
+
+    class Meta:
+        app_label = "testapp"
+
+    def __str__(self):
+        return self.title
+
+
+class ClusterableArticle(ClusterableModel):
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    author = models.ForeignKey(Author, on_delete=models.CASCADE)
+    tags = ParentalManyToManyField(Tag, blank=True)
+    metadata = models.JSONField(blank=True, null=True)
+    published_date = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         app_label = "testapp"

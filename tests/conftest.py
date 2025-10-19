@@ -19,7 +19,11 @@ def _setup_wagtail_initial_data(django_db_setup, django_db_blocker):
     with django_db_blocker.unblock():
         from django.conf import settings
         from django.contrib.contenttypes.models import ContentType
-        from wagtail.models import Collection, Locale, Page, Site
+        from wagtail.models import Page, Site
+        from wagtail.models.collections import (
+            Collection,  # type: ignore[import-not-found]
+        )
+        from wagtail.models.i18n import Locale
 
         # Create default locale
         if not Locale.objects.exists():
@@ -35,7 +39,7 @@ def _setup_wagtail_initial_data(django_db_setup, django_db_blocker):
         # Create root page if it doesn't exist
         if not Page.objects.exists():
             page_content_type = ContentType.objects.get_for_model(Page)
-            root_page = Page.add_root(
+            root_page = Page.add_root(  # type: ignore[attr-defined]
                 title="Root",
                 slug="root",
                 content_type=page_content_type,

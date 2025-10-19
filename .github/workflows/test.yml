@@ -91,8 +91,6 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=3
-          --character-set-server=utf8mb4
-          --collation-server=utf8mb4_unicode_ci
         ports:
           - 3306:3306
 
@@ -110,7 +108,11 @@ jobs:
     - name: Install MySQL client libraries
       run: |
         sudo apt-get update
-        sudo apt-get install -y libmysqlclient-dev pkg-config
+        sudo apt-get install -y libmysqlclient-dev pkg-config mysql-client
+
+    - name: Configure MySQL database charset
+      run: |
+        mysql -h 127.0.0.1 -u root -pisekai_root -e "ALTER DATABASE isekai_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
     - name: Install tox
       run: uv tool install tox --with tox-gh-actions

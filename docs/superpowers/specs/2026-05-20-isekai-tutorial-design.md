@@ -19,7 +19,8 @@ A full end-to-end tutorial for the isekai library, written for developers who ha
 
 ### 1. Narrative doc — `docs/tutorial.md`
 
-Tone: practical and first-person ("here's what we did and why"), not API reference. Each step has:
+Tone: practical and first-person ("here's what you can do and why"), not API reference. Each step has:
+
 - The problem being solved
 - The code with inline explanation
 - A checkpoint — what to run and what to expect
@@ -34,7 +35,7 @@ tutorial/
 ├── models.py          # CaseStudyPage + concrete Resource model
 ├── migrations/
 ├── parsers.py         # CaseStudyParser (BeautifulSoup)
-├── seeders.py         # SitemapSeeder config
+├── seeders.py         # CaseStudySeeder (subclass of SitemapSeeder)
 ├── miners.py          # CaseStudyMiner
 ├── transformers.py    # CaseStudyTransformer
 └── tests/
@@ -52,6 +53,7 @@ tutorial/
 **Approach:** Fetch the sitemap XML and count direct children per URL prefix. The section with the most direct children is likely serialized content (blog, news, case studies) and the best migration candidate.
 
 The tutorial shows a short Python script that:
+
 1. Fetches `sitemap.xml`
 2. Parses the XML
 3. Counts URLs per top-level section path
@@ -78,9 +80,13 @@ Also define the concrete `Resource` model that wires up all processors.
 
 ### Step 2: Seeding
 
-**Problem:** Get the list of URLs into the database.
+**Problem:** Get the list of URLs into the database — but only the case study URLs, not the entire sitemap.
 
-Use `SitemapSeeder` pointing at the case studies sitemap. Show the Resource model with `seeders = [SitemapSeeder(...)]`. Run `manage.py isekai` and show the resulting resources in SEEDED status.
+Write a `CaseStudySeeder` that subclasses `SitemapSeeder` and overrides the URL filter to include only paths matching `/our-impact/case-studies/`. The tutorial explains why this matters: a full sitemap includes funding pages, community fund pages, news, etc.
+
+Also introduce a `CASE_STUDIES_PARENT_PAGE_ID` Django setting — the Wagtail page ID of the case studies index page, looked up from the Wagtail admin. This will be used in the transformer to position new pages in the tree.
+
+Show the Resource model with `seeders = [CaseStudySeeder()]`. Run `manage.py isekai` and show only case study resources created in SEEDED status.
 
 ### Step 3: Extracting
 
@@ -93,12 +99,14 @@ Use `HTTPExtractor`. No custom code needed — show that the built-in handles re
 **Problem:** Before wiring parsing into the pipeline, validate that it works across different content variations.
 
 **Fixture setup:** Save 5–10 real case study HTML pages locally in `tutorial/tests/fixtures/case_studies/`. Choose samples that vary:
+
 - Page with a hero image vs. without
 - Page with multiple body sections vs. minimal content
 - Different category values
 - Different fund names
 
 **Write `CaseStudyParser`** (BeautifulSoup) with methods:
+
 - `get_title()` → str
 - `get_category()` → str
 - `get_fund_name()` → str | None
@@ -113,6 +121,7 @@ Use `HTTPExtractor`. No custom code needed — show that the built-in handles re
 **Problem:** Discover related resources (images) embedded in each case study page.
 
 Write `CaseStudyMiner` using the parser:
+
 - Call `parser.get_hero_image_url()` → emit `url:<image_url>` resource
 - Call `parser.get_body_sections()`, find `<img>` tags → emit `url:<image_url>` resources
 
@@ -123,11 +132,12 @@ Wire into Resource model: `miners = [CaseStudyMiner()]`.
 **Problem:** Convert extracted HTML into a `Spec` shaped like `CaseStudyPage`.
 
 Write `CaseStudyTransformer` using the parser:
+
 - Parse HTML from `resource.text_data`
 - Build `Spec` for `CaseStudyPage` with:
   - Scalar fields (title, category, fund_name, introduction, body)
   - `BlobRef` for hero image → resolves to Wagtail Image after load
-  - `__wagtail_parent_page` pointing to the case studies index page
+  - `__wagtail_parent_page` from `settings.CASE_STUDIES_PARENT_PAGE_ID`
 
 Also wire `ImageTransformer` from `isekai.contrib.wagtail` to handle the mined image resources.
 
@@ -140,13 +150,17 @@ Use `PageLoader` from `isekai.contrib.wagtail`. Show the Resource model fully as
 ## Key Design Decisions
 
 ### Parser-first, pipeline-second
+
 The parser is written and tested before it's wired into the miner or transformer. This isolates HTML parsing concerns and makes it easy to validate against real fixture HTML before running the full pipeline.
 
 ### Fixtures over VCR cassettes for tutorial code
+
 Sample HTML files in `tutorial/tests/fixtures/` are simple, readable, and don't require network recording infrastructure to understand. The tutorial reader can open an HTML file and see exactly what the parser is working with.
 
 ### Tutorial app separate from `dev/` testapp
+
 `tutorial/` is a clean, self-contained app that demonstrates one specific use case. It plugs into `dev/` for running but doesn't pollute the existing testapp.
 
 ### Fictional but plausible content
+
 All URLs, page titles, fund names, and content examples reference Cairngorm Foundation. This avoids any dependency on the real foundationscotland.org.uk site remaining stable while keeping the examples realistic.

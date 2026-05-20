@@ -1,12 +1,44 @@
 # Tutorial: Migrating Content into Wagtail with Isekai
 
-## Introduction
+## The Migration That's Been Sitting on Your Todo List
 
-You've been handed a Wagtail site rebuild project. The old site has hundreds of pages of content that need to move over. Copy-pasting is out of the question. You need a systematic way to fetch, parse, and load that content into Wagtail automatically.
+You're near the end of the project. The new Wagtail site looks great. The
+design is done, the custom page types are in place, the CMS is configured.
+There's just one thing left — the thing you've been quietly pushing to the
+bottom of the sprint: moving the content over from the old site.
 
-Isekai is a Django library that automates this through an ETL (Extract, Transform, Load) pipeline. Resources move through a defined sequence of statuses — SEEDED → EXTRACTED → MINED → TRANSFORMED → LOADED — and at each stage a registered processor handles the work.
+It's time.
 
-This tutorial walks through a real migration: moving case studies from the old Cairngorm Foundation website into a new Wagtail site. By the end, you'll have a working isekai pipeline that seeds URLs, fetches pages, mines images, parses content, and loads it all into Wagtail as `CaseStudyPage` objects.
+Your first instinct is to write a script. Fetch the pages, parse the HTML,
+save the records. How hard could it be?
+
+Pretty hard, it turns out.
+
+The HTML is inconsistent — some pages have an introduction paragraph, others
+don't. Images appear at unpredictable URLs, sometimes as cropped variants
+rather than the originals. Case study pages reference hero images that need
+to exist in the Wagtail image library *before* the page can be created — but
+those images come from the same pages you're still fetching. By page 51 your
+script throws a `KeyError` you didn't anticipate, and you realise you don't
+know the full shape of the data until you're already deep in it.
+
+The root problem is that a content migration isn't a single task. It's a
+*pipeline*: fetch the pages, discover what they reference, download those
+references, parse everything into structured data, then write it all to the
+database in the right order. Each of those stages has its own failure modes.
+When something breaks on stage three, you don't want to re-fetch two hundred
+pages to try again.
+
+That's what isekai gives you. A structured pipeline where each resource moves
+through defined stages — **SEEDED → EXTRACTED → MINED → TRANSFORMED →
+LOADED** — and where a failed or interrupted run can always pick up from
+where it stopped.
+
+In this tutorial we'll build a real migration: moving 260 case study pages
+from the Cairngorm Foundation website into a new Wagtail site, complete with
+hero images, body images, categories, and fund names. By the end you'll have
+a pipeline that handles all of that — and if it stops halfway through, you
+can run it again and it'll skip everything that already worked.
 
 ## Prerequisites
 

@@ -583,9 +583,12 @@ class Resource(AbstractResource):
     miners = [CaseStudyMiner()]
 ```
 
-## Step 7: Transforming — mapping HTML to Wagtail fields
+## Step 7: Transforming — mapping content to a model description
 
-A transformer takes an extracted resource and returns a `Spec` — a description of what model to create and what field values to give it.
+A transformer reads an extracted resource and returns a `Spec` — a
+description of what model instance to create and what field values to give
+it. Critically, the transformer *doesn't touch the database*. It just
+describes the object. The loader (Step 8) does the actual creating.
 
 ```python
 # tutorial/transformers.py
@@ -633,13 +636,25 @@ class CaseStudyTransformer(BaseTransformer):
         )
 ```
 
-Three things to explain here:
+Three things worth understanding here:
 
-**`content_type="tutorial.casestudypage"`** tells the loader which Django model to instantiate. It's the app label plus the model name, lowercased.
+**`content_type="tutorial.casestudypage"`** tells the loader which Django
+model to instantiate. It's the app label plus the model name, lowercased —
+the same format Django uses for `ContentType`.
 
-**`BlobRef(Key(type="url", value=hero_url))`** is a lazy reference. Rather than embedding the image directly, it says "when you load this page, set `hero_image` to whatever Wagtail Image was created from this resource key." The loader resolves it at load time, after the image has been extracted and loaded.
+**`__wagtail_parent_page`** is a special attribute that `PageLoader` reads
+to know where in the Wagtail page tree to attach the new page. It's removed
+before Django sees the attributes, so it won't cause an "unexpected field"
+error.
 
-**`__wagtail_parent_page`** is a special attribute that `PageLoader` reads to know where in the Wagtail page tree to attach the new page. Set it to the integer PK of your parent page.
+**`BlobRef(Key(type="url", value=hero_url))`** deserves a closer look:
+
+!!! warning "BlobRef is lazy — the image doesn't need to exist yet"
+    `BlobRef` is a *reference*, not a value. It says "when you load this
+    page, set `hero_image` to whatever Wagtail `Image` was created from this
+    URL." The loader resolves it at load time, after the image has been
+    extracted and transformed. You don't need the image to exist when you
+    return this `Spec` — isekai handles the ordering for you.
 
 ## Step 8: Loading — writing to the database
 

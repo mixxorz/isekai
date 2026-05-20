@@ -314,9 +314,20 @@ runs together in Step 8. Continue to the next step.
 
 ## Step 5: Parsing — understanding the HTML before wiring it in
 
-Write and test parsing logic against local HTML files before connecting it to the pipeline. This decouples your parsing logic from the network and makes iteration fast.
+Before connecting any parser to the pipeline, write and test it against
+local HTML files. This decouples your parsing logic from the network:
+you're not waiting for 260 HTTP requests every time you tweak a CSS
+selector.
 
-**Collect fixture files** — pick five representative pages that cover the structural variations you've observed, download their HTML, and save them under `tutorial/tests/fixtures/case_studies/`. Choose pages that vary:
+!!! tip "Test your parser against fixture files before wiring it into the pipeline"
+    Download five representative pages and save them as fixtures. Run your
+    parser tests against those files. You want to know your selectors work
+    *before* you've fetched 260 pages and found the broken ones only at
+    transform time.
+
+**Collect fixture files** — pick five pages that cover the structural
+variations you've observed and save them under
+`tutorial/tests/fixtures/case_studies/`. Choose pages that vary:
 
 - Newer structure with intro + sections + body images
 - Newer structure with fewer sections, no body images
@@ -428,10 +439,15 @@ class CaseStudyParser:
 
 A few things worth noting:
 
-- `get_fund_name()` returns `None` (not `""`) when absent — older pages have no Related fund link at all
-- `get_introduction()` returns `""` on older pages — the `text-lead` class simply doesn't exist
-- `get_body_sections()` checks for `red-brown` WITHOUT `text-lead` to exclude the intro paragraph, which on newer pages carries both classes
-- `get_body_image_urls()` only looks inside `div.editor`, not the entire document, so hero images aren't double-counted
+- `get_fund_name()` returns `None` (not `""`) when absent — older pages
+  have no Related fund link at all, and we want to distinguish "not
+  present" from "present but empty"
+- `get_introduction()` returns `""` on older pages — the `text-lead` class
+  simply doesn't exist on those pages
+- `get_body_sections()` checks for `red-brown` *without* `text-lead` to
+  exclude the intro paragraph, which on newer pages carries both classes
+- `get_body_image_urls()` only looks inside `div.editor`, not the entire
+  document, so the hero image isn't double-counted
 
 Write tests against each fixture:
 
@@ -474,7 +490,9 @@ class TestCaseStudyParserFixture01:
 # ... and so on for fixtures 02–05
 ```
 
-Each fixture class tests something different: a page with no body images, a page with Charity Funds category, an older page with no intro, an older page with no fund link.
+Each fixture class tests something different: a page with no body images,
+a page with Charity Funds category, an older page with no intro, an older
+page with no fund link.
 
 Checkpoint:
 
@@ -482,7 +500,8 @@ Checkpoint:
 pytest tutorial/tests/test_parser.py -v
 ```
 
-All tests should pass. Fix any selector mismatches before moving on — getting this right now means your pipeline will work without surprises.
+All tests should pass. Fix any selector mismatches before moving on —
+getting this right now means your pipeline will work without surprises.
 
 ## Step 6: Mining — discovering images
 

@@ -47,9 +47,18 @@ can run it again and it'll skip everything that already worked.
 - isekai installed: `pip install isekai-django[wagtail]`
 - BeautifulSoup4 installed: `pip install beautifulsoup4`
 
-## Step 0: Planning — What to migrate
+## Step 0: Planning — Understand the data before you write a line
 
-Before writing any code, spend five minutes looking at the old site's sitemap to understand what content is there and how it's structured.
+Before writing any code, spend five minutes understanding what you're
+actually migrating. The shape of the data determines every parser and
+transformer you'll write. Skipping this step means discovering surprises
+in the middle of a run instead of at the start.
+
+!!! tip "Five minutes with a sitemap saves hours of surprised parsing code"
+    The most common mistake in content migrations is diving straight into
+    code. A quick look at the sitemap and a few representative pages will
+    tell you what fields exist, how consistent the HTML is, and what edge
+    cases to design for.
 
 This script analyses a sitemap and counts pages per section:
 
@@ -85,7 +94,7 @@ Output:
  ...
 ```
 
-260 case study pages — each with a consistent structure. That's the target.
+260 case study pages — each with a consistent structure. That's our target.
 
 Inspect one page manually and list what you can extract:
 
@@ -96,7 +105,9 @@ Inspect one page manually and list what you can extract:
 - **Introduction** — from `<p class="text-lead">` (newer pages only)
 - **Body sections** — from `<p class="red-brown">` headings inside `<div class="editor">`
 
-Older pages have a simpler flat structure with no introduction or sections. Your parser needs to handle both gracefully.
+Older pages have a simpler flat structure with no introduction or sections.
+Your parser needs to handle both gracefully — we'll come back to that in
+Step 5.
 
 ## Step 1: The Wagtail destination model
 

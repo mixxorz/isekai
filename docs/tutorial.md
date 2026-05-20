@@ -242,9 +242,14 @@ the first one that returns a result. This is how `ImageTransformer` and
 `CaseStudyTransformer` coexist: each handles a different type of resource
 and returns `None` for the other.
 
-## Step 3: Seeding — getting the URL list
+## Step 3: Seeding — building the list of what to migrate
 
-`SitemapSeeder` is built into isekai. It fetches a sitemap XML and creates a Resource for every URL. But we only want case study URLs, not the whole site:
+The seeder's job is simple: generate the initial set of resource keys.
+Those keys are what the rest of the pipeline works from.
+
+`SitemapSeeder` is built into isekai. It fetches a sitemap XML and creates
+a `Resource` for every URL it finds. We only want case study URLs, not the
+whole site, so we subclass it and add a filter:
 
 ```python
 # tutorial/seeders.py
@@ -269,19 +274,43 @@ class CaseStudySeeder(SitemapSeeder):
         ]
 ```
 
-The filter keeps only URLs that contain `/our-impact/case-studies/` and aren't the index page itself.
+The filter keeps only URLs that contain `/our-impact/case-studies/` and
+strips the index page itself — we want the individual case studies, not
+the listing page.
 
-Individual pipeline stages can't be run in isolation — the full pipeline runs together in Step 8. Continue to the next step.
+Wire it into your `Resource` model:
 
-## Step 4: Extracting — fetching the HTML
+```python
+from tutorial.seeders import CaseStudySeeder
 
-`HTTPExtractor` is built in and handles retries, redirects, and MIME type detection. No custom code is needed. It's already in `Resource.extractors`:
+class Resource(AbstractResource):
+    seeders = [CaseStudySeeder()]
+    # ... rest of processors
+```
+
+Individual pipeline stages can't be run in isolation — the full pipeline
+runs together in Step 8. Continue to the next step.
+
+## Step 4: Extracting — fetching the raw content
+
+The extractor's job is to fetch raw data for each seeded resource and
+store it. `HTTPExtractor` is built in: it makes an HTTP GET request,
+detects the content type from the response headers, and stores the result
+as text (for HTML and JSON) or as a binary file (for images, PDFs, and
+other non-text formats). It handles redirects and basic retries
+automatically.
+
+No custom code needed here. It's already in your `Resource` model:
 
 ```python
 extractors = [HTTPExtractor()]
 ```
 
-Individual pipeline stages can't be run in isolation — the full pipeline runs together in Step 8. Continue to the next step.
+That one line handles fetching all 260 case study HTML pages and, later
+in the pipeline, all the image files the miner discovers.
+
+Individual pipeline stages can't be run in isolation — the full pipeline
+runs together in Step 8. Continue to the next step.
 
 ## Step 5: Parsing — understanding the HTML before wiring it in
 

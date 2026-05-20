@@ -109,9 +109,11 @@ Older pages have a simpler flat structure with no introduction or sections.
 Your parser needs to handle both gracefully — we'll come back to that in
 Step 5.
 
-## Step 1: The Wagtail destination model
+## Step 1: The destination — your CaseStudyPage model
 
-Create a `CaseStudyPage` that represents where the migrated content will land:
+You already have a `CaseStudyPage` model. You built it earlier in the
+project when you were defining the site's page types. Here's what it
+looks like:
 
 ```python
 # tutorial/models.py
@@ -150,9 +152,17 @@ class CaseStudyPage(Page):
         verbose_name = "Case Study Page"
 ```
 
-The `body` StreamField uses `RichTextBlock` for each section, which preserves the HTML from the source page. The `hero_image` FK points at Wagtail's built-in `Image` model — isekai will create those Image objects automatically when it processes the mined image resources.
+This is the destination. Everything the pipeline does — fetching, parsing,
+downloading images — is in service of populating these fields.
 
-Find the parent page ID in the Wagtail admin by navigating to the page you want case studies nested under and noting the ID in the URL (e.g. `/cms/pages/3/`). Add it to your settings:
+The `body` StreamField uses `RichTextBlock` for each section, which
+preserves the HTML from the source page. The `hero_image` FK points at
+Wagtail's built-in `Image` model — isekai will create those `Image` objects
+automatically when it processes the mined image resources.
+
+Find the parent page ID in the Wagtail admin by navigating to the page you
+want case studies nested under and noting the ID in the URL
+(e.g. `/cms/pages/3/`). Add it to your settings:
 
 ```python
 # settings.py
@@ -161,10 +171,35 @@ CASE_STUDIES_PARENT_PAGE_ID = 3
 
 ## Step 2: Setting up isekai — the Resource model
 
-Every isekai pipeline needs a concrete `Resource` model that wires all processors together. Create it alongside `CaseStudyPage`:
+Every isekai pipeline needs a concrete `Resource` model. Think of it as
+the pipeline's ledger: one database row per piece of content, each row
+tracking exactly where that content is in its journey from the old site
+to Wagtail.
+
+Start with the minimal version:
 
 ```python
 # tutorial/models.py (continued)
+from isekai.models import AbstractResource
+
+
+class Resource(AbstractResource):
+    class Meta:
+        verbose_name = "Resource"
+        verbose_name_plural = "Resources"
+```
+
+!!! note "One concrete subclass, exactly"
+    Isekai discovers your `Resource` model at runtime using
+    `get_resource_model()`. There must be exactly one concrete subclass of
+    `AbstractResource` in your project — isekai will raise an error if it
+    finds zero or more than one.
+
+As we build each component in the steps below, we'll wire it in here. By
+the end of this tutorial, `Resource` will look like this:
+
+```python
+# tutorial/models.py (final form)
 from isekai.contrib.wagtail.loaders import PageLoader
 from isekai.contrib.wagtail.transformers import ImageTransformer
 from isekai.extractors import HTTPExtractor
@@ -194,13 +229,18 @@ class Resource(AbstractResource):
         verbose_name_plural = "Resources"
 ```
 
-Each list slot is a processor class. Isekai calls them in order at the appropriate pipeline stage. We'll fill these in as we build each component — for now, understand the overall shape:
+Each list is a set of processors for that pipeline stage:
 
 - **seeders** — generate the initial list of resource keys (URLs to migrate)
-- **extractors** — fetch data for each resource (HTTP requests)
+- **extractors** — fetch raw data for each resource (HTTP requests)
 - **miners** — discover related resources from extracted content (images)
 - **transformers** — convert extracted content into a `Spec` describing what Django model to create
 - **loaders** — write the `Spec` to the database
+
+When a stage has multiple processors, isekai tries them in order and uses
+the first one that returns a result. This is how `ImageTransformer` and
+`CaseStudyTransformer` coexist: each handles a different type of resource
+and returns `None` for the other.
 
 ## Step 3: Seeding — getting the URL list
 

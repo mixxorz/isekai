@@ -722,11 +722,42 @@ Open the Wagtail admin and navigate to the parent page. You should find
 all 260 case study pages nested beneath it, each with title, category,
 fund name, hero image, introduction, and body sections populated.
 
+## What you built
+
+You started with a deadline and a blank file. Now 260 case studies are
+in Wagtail — titles, categories, fund names, hero images, body sections,
+all of it. The pipeline handled the ordering, the retries, the inconsistent
+HTML structure across older and newer pages. You described what each stage
+should do; isekai did the coordination.
+
+!!! success "What we learned"
+    - **Understand the shape of your data before writing any code.** Five
+      minutes with a sitemap and a few representative pages tells you what
+      fields exist and what edge cases to design for.
+    - **Separate fetching from parsing from loading.** When something
+      breaks, you'll know exactly which stage failed and why — and you
+      won't re-fetch two hundred pages to try again.
+    - **Normalize image URLs at mine time, not transform time.** CMS image
+      URLs are often variants of the original. Mine the canonical URL so
+      you download the full-quality image once.
+    - **If the pipeline stops, run it again.** Isekai picks up where it
+      left off.
+
 ## What's next
 
-This tutorial covered the happy path. A production migration will hit a few more things:
+The same pattern scales to every other content type on the site. News
+articles, team bios, funding pages — each one gets a seeder to find them,
+a parser to extract the fields, and a transformer to map them to the right
+Wagtail page type. The pipeline infrastructure you've built here handles
+all of them.
 
-- **URL normalization** — the same image URL might appear with and without a trailing slash; deduplicate with a normalizer before seeding
-- **Image fallbacks** — some hero images may return 404; handle errors in your miner or add a null check in the transformer
-- **Authenticated pages** — some sites require session cookies; extend `HTTPExtractor` or replace it with a custom extractor that manages auth
-- **Other content types** — news articles, team bios, and funding pages all follow the same pattern: a seeder to find them, a parser to extract the fields, a transformer to map them to Wagtail models
+A few things a production migration will add:
+
+- **URL normalization** — the same image URL might appear with and without
+  a trailing slash; deduplicate with a normalizer before seeding
+- **Image fallbacks** — some hero images may return 404; add a null check
+  in the transformer or handle the error in your miner
+- **Authenticated pages** — some sites require session cookies; extend
+  `HTTPExtractor` or replace it with a custom extractor that manages auth
+- **Multiple content types** — see the how-to guides for seeders,
+  extractors, miners, transformers, and loaders

@@ -20,11 +20,11 @@
 - `tutorial/miners.py` — `CaseStudyMiner` (emits image resource keys)
 - `tutorial/transformers.py` — `CaseStudyTransformer` (builds Spec for CaseStudyPage)
 - `tutorial/tests/__init__.py`
-- `tutorial/tests/fixtures/case_studies/case_study_01.html` — hero image + multiple sections
-- `tutorial/tests/fixtures/case_studies/case_study_02.html` — no hero image
-- `tutorial/tests/fixtures/case_studies/case_study_03.html` — different category (Charity Funds)
-- `tutorial/tests/fixtures/case_studies/case_study_04.html` — minimal content (intro only, no body)
-- `tutorial/tests/fixtures/case_studies/case_study_05.html` — different fund name, inline images in body
+- `tutorial/tests/fixtures/case_studies/case_study_01.html` — newer structure, 4 sections, body images, fund name (reopening-crosswater)
+- `tutorial/tests/fixtures/case_studies/case_study_02.html` — newer structure, 2 sections, no body images (loch-restocking-for-barrhill-angling-club)
+- `tutorial/tests/fixtures/case_studies/case_study_03.html` — newer structure, 0 body sections, Charity Funds category (brewing-up-strong-blend-of-skills)
+- `tutorial/tests/fixtures/case_studies/case_study_04.html` — older flat structure, no p.text-lead intro, no sections, no fund link (watten-school-parent-council)
+- `tutorial/tests/fixtures/case_studies/case_study_05.html` — older flat structure, Charity Funds, no fund link (fischy-music)
 - `tutorial/tests/test_parser.py` — parser tests against all five fixtures
 - `docs/tutorial.md` — the narrative tutorial document
 
@@ -232,184 +232,59 @@ git commit -m "feat(tutorial): add CaseStudySeeder"
 
 ---
 
-## Task 4: Create HTML fixture files
+## Task 4: Download HTML fixture files
 
 **Files:**
-- Create: `tutorial/tests/fixtures/case_studies/case_study_01.html`
+- Create: `tutorial/tests/fixtures/case_studies/case_study_01.html` — downloaded from foundationscotland.org.uk
 - Create: `tutorial/tests/fixtures/case_studies/case_study_02.html`
 - Create: `tutorial/tests/fixtures/case_studies/case_study_03.html`
 - Create: `tutorial/tests/fixtures/case_studies/case_study_04.html`
 - Create: `tutorial/tests/fixtures/case_studies/case_study_05.html`
 
-These are realistic fictional HTML pages modelled on the foundationscotland.org.uk structure. Each tests a different parsing edge case.
+These are real pages downloaded from foundationscotland.org.uk. The tutorial fictions the site name as "Cairngorm Foundation" in prose, but uses the real HTML as fixtures so the parser is tested against actual markup.
 
-- [ ] **Step 1: Create fixture directory**
+The real site's HTML structure (discovered by inspection):
+- Title: `<h1 class="heading-primary">`
+- Category: `<ul class="list-meta"> li` containing `<strong>Category:</strong>` + `<a class="link">`
+- Fund name: `<ul class="list-meta"> li` containing `<strong>Related fund:</strong>` + `<a>`
+- Hero image: `<figure class="... wide ..."> img` (relative `/sites/default/files/...` src)
+- Intro (newer pages only): `<p class="text-lead">`
+- Section headings (newer pages only): `<p class="red-brown">` (not combined with `text-lead`)
+- Body images: `<img>` inside `<div class="editor section">`
+
+- [ ] **Step 1: Create fixture directory and download pages**
 
 ```bash
 mkdir -p tutorial/tests/fixtures/case_studies
+
+curl -s -A "Mozilla/5.0" \
+  "https://www.foundationscotland.org.uk/our-impact/case-studies/reopening-crosswater" \
+  -o "tutorial/tests/fixtures/case_studies/case_study_01.html"
+
+curl -s -A "Mozilla/5.0" \
+  "https://www.foundationscotland.org.uk/our-impact/case-studies/loch-restocking-for-barrhill-angling-club" \
+  -o "tutorial/tests/fixtures/case_studies/case_study_02.html"
+
+curl -s -A "Mozilla/5.0" \
+  "https://www.foundationscotland.org.uk/our-impact/case-studies/brewing-up-strong-blend-of-skills" \
+  -o "tutorial/tests/fixtures/case_studies/case_study_03.html"
+
+curl -s -A "Mozilla/5.0" \
+  "https://www.foundationscotland.org.uk/our-impact/case-studies/watten-school-parent-council" \
+  -o "tutorial/tests/fixtures/case_studies/case_study_04.html"
+
+curl -s -A "Mozilla/5.0" \
+  "https://www.foundationscotland.org.uk/our-impact/case-studies/fischy-music" \
+  -o "tutorial/tests/fixtures/case_studies/case_study_05.html"
 ```
 
-- [ ] **Step 2: Create `case_study_01.html` — hero image + multiple body sections**
+Expected: 5 files, each ~49–55 KB.
 
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>Reopening The Crosswater Inn | Cairngorm Foundation</title></head>
-<body>
-  <nav class="breadcrumb"><a href="/">Home</a> &gt; <a href="/our-impact/">Our Impact</a> &gt; <a href="/our-impact/case-studies/">Case Studies</a></nav>
-  <article class="case-study">
-    <header class="case-study__header">
-      <h1 class="case-study__title">Reopening The Crosswater Inn</h1>
-      <ul class="case-study__meta">
-        <li><strong>Category:</strong> <a href="/our-impact/case-studies/?category=community-funds">Community Funds</a></li>
-        <li><strong>Related fund:</strong> <a href="/barrhill-community-fund/">Barrhill Community Fund</a></li>
-      </ul>
-    </header>
-    <div class="case-study__hero">
-      <img src="https://cairngormfoundation.org.uk/sites/default/files/2026-03/crosswater-inn.jpg" alt="The Crosswater Inn exterior" />
-    </div>
-    <div class="case-study__body">
-      <p class="case-study__intro">A grant of £45,000 from the Barrhill Community Fund helped the local community reopen The Crosswater Inn after it closed in 2022, restoring a vital social hub for the village.</p>
-      <h2>The Background</h2>
-      <p>The Crosswater Inn had served the village of Barrhill for over 150 years before closing its doors when the previous owner retired. With no alternative pub within 12 miles, residents were left without a gathering place.</p>
-      <h2>Community Ownership</h2>
-      <p>The Barrhill Community Benefit Society was formed in 2023 to take on the building through a community asset transfer. Over 80% of households in the village became members.</p>
-      <img src="https://cairngormfoundation.org.uk/sites/default/files/inline-images/community-meeting.jpg" alt="Community meeting" />
-      <h2>The Impact</h2>
-      <ul>
-        <li>Full-time employment for 3 local residents</li>
-        <li>Part-time employment for 6 more</li>
-        <li>Weekly community events attracting 50+ attendees</li>
-      </ul>
-    </div>
-  </article>
-</body>
-</html>
-```
-
-- [ ] **Step 3: Create `case_study_02.html` — no hero image**
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>Loch Broom Angling Club Restocking | Cairngorm Foundation</title></head>
-<body>
-  <nav class="breadcrumb"><a href="/">Home</a> &gt; <a href="/our-impact/">Our Impact</a> &gt; <a href="/our-impact/case-studies/">Case Studies</a></nav>
-  <article class="case-study">
-    <header class="case-study__header">
-      <h1 class="case-study__title">Loch Broom Angling Club Restocking</h1>
-      <ul class="case-study__meta">
-        <li><strong>Category:</strong> <a href="/our-impact/case-studies/?category=community-funds">Community Funds</a></li>
-        <li><strong>Related fund:</strong> <a href="/strathmore-wind-farm-fund/">Strathmore Wind Farm Fund</a></li>
-      </ul>
-    </header>
-    <div class="case-study__body">
-      <p class="case-study__intro">The Loch Broom Angling Club received £8,200 to restock the loch with native brown trout following a significant population decline caused by a disease outbreak.</p>
-      <h2>The Background</h2>
-      <p>The loch had supported recreational fishing for the local community for generations, providing both leisure and a modest income for the club through fishing permits.</p>
-      <h2>The Impact</h2>
-      <p>Within a year of restocking, permit sales had returned to pre-outbreak levels and the club was able to run its junior fishing programme again.</p>
-    </div>
-  </article>
-</body>
-</html>
-```
-
-- [ ] **Step 4: Create `case_study_03.html` — Charity Funds category**
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>Brewing Up Skills at Kinloch Hospitality | Cairngorm Foundation</title></head>
-<body>
-  <nav class="breadcrumb"><a href="/">Home</a> &gt; <a href="/our-impact/">Our Impact</a> &gt; <a href="/our-impact/case-studies/">Case Studies</a></nav>
-  <article class="case-study">
-    <header class="case-study__header">
-      <h1 class="case-study__title">Brewing Up Skills at Kinloch Hospitality</h1>
-      <ul class="case-study__meta">
-        <li><strong>Category:</strong> <a href="/our-impact/case-studies/?category=charity-funds">Charity Funds</a></li>
-        <li><strong>Related fund:</strong> <a href="/bairdwatson-charitable-trust/">The Bairdwatson Charitable Trust</a></li>
-      </ul>
-    </header>
-    <div class="case-study__hero">
-      <img src="https://cairngormfoundation.org.uk/sites/default/files/2026-04/kinloch-hospitality.jpg" alt="Trainees at Kinloch Hospitality College" />
-    </div>
-    <div class="case-study__body">
-      <p class="case-study__intro">A grant of £18,980 from The Bairdwatson Charitable Trust supports young people in the Highlands to develop vocational skills in the hospitality industry.</p>
-      <h2>The Programme</h2>
-      <p>Kinloch Hospitality College runs a twelve-week intensive programme covering barista skills, kitchen craft, and front-of-house customer service. Participants receive a nationally recognised qualification on completion.</p>
-      <h2>Who Benefits</h2>
-      <p>The programme targets 16–24 year olds who are not in education, employment or training (NEET). Since 2021, over 60 young people have completed the course, with 78% moving into employment within three months.</p>
-    </div>
-  </article>
-</body>
-</html>
-```
-
-- [ ] **Step 5: Create `case_study_04.html` — minimal content (intro only, no body sections)**
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>Glenshee Village Hall Roof Repair | Cairngorm Foundation</title></head>
-<body>
-  <nav class="breadcrumb"><a href="/">Home</a> &gt; <a href="/our-impact/">Our Impact</a> &gt; <a href="/our-impact/case-studies/">Case Studies</a></nav>
-  <article class="case-study">
-    <header class="case-study__header">
-      <h1 class="case-study__title">Glenshee Village Hall Roof Repair</h1>
-      <ul class="case-study__meta">
-        <li><strong>Category:</strong> <a href="/our-impact/case-studies/?category=community-funds">Community Funds</a></li>
-        <li><strong>Related fund:</strong> <a href="/glenshee-community-benefit-fund/">Glenshee Community Benefit Fund</a></li>
-      </ul>
-    </header>
-    <div class="case-study__body">
-      <p class="case-study__intro">A grant of £12,000 from the Glenshee Community Benefit Fund enabled the village hall committee to replace a failing roof that had left the building unusable during winter months.</p>
-    </div>
-  </article>
-</body>
-</html>
-```
-
-- [ ] **Step 6: Create `case_study_05.html` — different fund name, inline body images**
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>Cairn Makers: Heritage Dry Stone Walling | Cairngorm Foundation</title></head>
-<body>
-  <nav class="breadcrumb"><a href="/">Home</a> &gt; <a href="/our-impact/">Our Impact</a> &gt; <a href="/our-impact/case-studies/">Case Studies</a></nav>
-  <article class="case-study">
-    <header class="case-study__header">
-      <h1 class="case-study__title">Cairn Makers: Heritage Dry Stone Walling</h1>
-      <ul class="case-study__meta">
-        <li><strong>Category:</strong> <a href="/our-impact/case-studies/?category=community-funds">Community Funds</a></li>
-        <li><strong>Related fund:</strong> <a href="/cairngorm-highland-estates-fund/">Cairngorm Highland Estates Fund</a></li>
-      </ul>
-    </header>
-    <div class="case-study__hero">
-      <img src="https://cairngormfoundation.org.uk/sites/default/files/2026-01/dry-stone-walling.jpg" alt="Apprentice dry stone waller at work" />
-    </div>
-    <div class="case-study__body">
-      <p class="case-study__intro">The Cairn Makers project received £22,500 to train a new generation of dry stone wallers, preserving a traditional craft that is essential for maintaining the Highland landscape.</p>
-      <h2>The Craft</h2>
-      <p>Dry stone walling requires no mortar — walls are built entirely through the careful selection and placement of stone. This technique has been used in the Cairngorms for over two thousand years.</p>
-      <img src="https://cairngormfoundation.org.uk/sites/default/files/inline-images/wall-technique.jpg" alt="Close-up of wall construction technique" />
-      <h2>The Training Programme</h2>
-      <p>Eight apprentices completed a six-month training programme under master waller Duncan Mackay, working on real restoration projects across three estates.</p>
-      <img src="https://cairngormfoundation.org.uk/sites/default/files/inline-images/apprentices-group.jpg" alt="The eight apprentices with their instructor" />
-      <h2>Looking Ahead</h2>
-      <p>All eight apprentices have since secured paid work, and three have started their own contracting businesses.</p>
-    </div>
-  </article>
-</body>
-</html>
-```
-
-- [ ] **Step 7: Commit the fixtures**
+- [ ] **Step 2: Commit the fixtures**
 
 ```bash
 git add tutorial/tests/fixtures/
-git commit -m "feat(tutorial): add HTML fixture files for parser testing"
+git commit -m "feat(tutorial): add downloaded HTML fixture files for parser testing"
 ```
 
 ---
@@ -421,95 +296,113 @@ git commit -m "feat(tutorial): add HTML fixture files for parser testing"
 
 - [ ] **Step 1: Write `tutorial/parsers.py`**
 
+The real site HTML structure (verified against downloaded fixtures):
+- Title: `<h1 class="heading-primary">`
+- Category: first `<a>` inside the `<li>` containing `<strong>Category:</strong>` in `<ul class="list-meta">`
+- Fund: first `<a>` inside the `<li>` containing `<strong>Related fund:</strong>` in `<ul class="list-meta">`
+- Hero: `<figure class="... wide ..."> img` — the `wide` class identifies the hero figure
+- Intro (newer pages): `<p class="text-lead">` — absent on older pages, returns `""` gracefully
+- Section headings (newer pages): `<p class="red-brown">` without `text-lead` — absent on older pages
+- Body images: `<img>` inside any `<div>` with both `section` and `editor` classes
+
 ```python
 from bs4 import BeautifulSoup, Tag
 
 
 class CaseStudyParser:
-    """Extracts structured data from a Cairngorm Foundation case study HTML page."""
+    """Extracts structured data from a Foundation Scotland case study HTML page."""
 
     def __init__(self, html: str):
         self.soup = BeautifulSoup(html, "html.parser")
 
     def get_title(self) -> str:
-        tag = self.soup.select_one("h1.case-study__title")
+        tag = self.soup.find("h1", class_="heading-primary")
         if tag is None:
             return ""
         return tag.get_text(strip=True)
 
     def get_category(self) -> str:
-        for li in self.soup.select("ul.case-study__meta li"):
-            strong = li.find("strong")
-            if strong and "Category" in strong.get_text():
-                link = li.find("a")
-                if link:
-                    return link.get_text(strip=True)
+        for ul in self.soup.find_all("ul", class_="list-meta"):
+            for li in ul.find_all("li"):
+                if "Category" in li.get_text():
+                    link = li.find("a")
+                    if link:
+                        return link.get_text(strip=True)
         return ""
 
     def get_fund_name(self) -> str | None:
-        for li in self.soup.select("ul.case-study__meta li"):
-            strong = li.find("strong")
-            if strong and "Related fund" in strong.get_text():
-                link = li.find("a")
-                if link:
-                    return link.get_text(strip=True)
+        for ul in self.soup.find_all("ul", class_="list-meta"):
+            for li in ul.find_all("li"):
+                if "Related fund" in li.get_text():
+                    link = li.find("a")
+                    if link:
+                        return link.get_text(strip=True)
         return None
 
     def get_hero_image_url(self) -> str | None:
-        hero = self.soup.select_one("div.case-study__hero img")
-        if hero is None:
+        # The hero figure has the "wide" class among its figure classes
+        hero_fig = self.soup.find("figure", class_="wide")
+        if hero_fig is None:
             return None
-        src = hero.get("src")
+        img = hero_fig.find("img")
+        if img is None:
+            return None
+        src = img.get("src")
         return str(src) if src else None
 
     def get_introduction(self) -> str:
-        tag = self.soup.select_one("p.case-study__intro")
+        # Newer pages have p.text-lead; older pages have no dedicated intro element
+        tag = self.soup.find("p", class_="text-lead")
         if tag is None:
             return ""
         return tag.get_text(strip=True)
 
     def get_body_sections(self) -> list[str]:
         """
-        Returns the body content as a list of HTML strings, one per h2 section.
-        Content before the first h2 (other than the intro) is ignored.
-        If there are no h2 headings, returns an empty list.
+        Returns body sections as a list of HTML strings.
+
+        Newer pages use p.red-brown as section headings (without text-lead class).
+        Each section runs from one p.red-brown to the next.
+        Older flat pages have no p.red-brown elements and return an empty list.
         """
-        body_div = self.soup.select_one("div.case-study__body")
-        if body_div is None:
-            return []
+        all_tags: list[Tag] = []
+        for div in self.soup.find_all("div", class_="editor"):
+            for child in div.children:
+                if isinstance(child, Tag):
+                    all_tags.append(child)
 
         sections: list[str] = []
-        current_section_tags: list[Tag] = []
+        current: list[Tag] = []
         in_section = False
 
-        for child in body_div.children:
-            if not isinstance(child, Tag):
-                continue
-            if child.name == "h2":
-                if in_section and current_section_tags:
-                    sections.append(
-                        "".join(str(t) for t in current_section_tags)
-                    )
-                current_section_tags = [child]
+        for tag in all_tags:
+            classes = tag.get("class") or []
+            is_heading = (
+                tag.name == "p"
+                and "red-brown" in classes
+                and "text-lead" not in classes
+            )
+            if is_heading:
+                if in_section and current:
+                    sections.append("".join(str(t) for t in current))
+                current = [tag]
                 in_section = True
             elif in_section:
-                current_section_tags.append(child)
+                current.append(tag)
 
-        if in_section and current_section_tags:
-            sections.append("".join(str(t) for t in current_section_tags))
+        if in_section and current:
+            sections.append("".join(str(t) for t in current))
 
         return sections
 
     def get_body_image_urls(self) -> list[str]:
-        """Returns absolute image URLs found inside body sections (not the hero)."""
-        body_div = self.soup.select_one("div.case-study__body")
-        if body_div is None:
-            return []
+        """Returns image src values found inside div.editor (body content, not hero)."""
         urls = []
-        for img in body_div.find_all("img"):
-            src = img.get("src")
-            if src:
-                urls.append(str(src))
+        for div in self.soup.find_all("div", class_="editor"):
+            for img in div.find_all("img"):
+                src = img.get("src")
+                if src:
+                    urls.append(str(src))
         return urls
 ```
 
@@ -537,10 +430,10 @@ git commit -m "feat(tutorial): add CaseStudyParser"
 
 - [ ] **Step 1: Write `tutorial/tests/test_parser.py`**
 
+Expected values verified against actual downloaded fixtures.
+
 ```python
 from pathlib import Path
-
-import pytest
 
 from tutorial.parsers import CaseStudyParser
 
@@ -553,58 +446,62 @@ def load_fixture(filename: str) -> CaseStudyParser:
 
 
 class TestCaseStudyParserFixture01:
-    """case_study_01.html: hero image + multiple body sections"""
+    """case_study_01.html: reopening-crosswater — newer structure, 4 sections, body images"""
 
     def setup_method(self):
         self.parser = load_fixture("case_study_01.html")
 
     def test_get_title(self):
-        assert self.parser.get_title() == "Reopening The Crosswater Inn"
+        assert self.parser.get_title() == "Reopening The Crosswater"
 
     def test_get_category(self):
         assert self.parser.get_category() == "Community Funds"
 
     def test_get_fund_name(self):
-        assert self.parser.get_fund_name() == "Barrhill Community Fund"
+        assert self.parser.get_fund_name() == "Barrhill Community Interest Company"
 
     def test_get_hero_image_url(self):
-        assert self.parser.get_hero_image_url() == (
-            "https://cairngormfoundation.org.uk/sites/default/files/2026-03/crosswater-inn.jpg"
-        )
+        url = self.parser.get_hero_image_url()
+        assert url is not None
+        assert "sites/default/files" in url
 
     def test_get_introduction(self):
-        assert "£45,000" in self.parser.get_introduction()
-        assert "Barrhill Community Fund" in self.parser.get_introduction()
+        intro = self.parser.get_introduction()
+        assert "Barrhill" in intro
+        assert intro != ""
 
     def test_get_body_sections_count(self):
         sections = self.parser.get_body_sections()
-        assert len(sections) == 3
+        assert len(sections) == 4
 
     def test_get_body_sections_contain_headings(self):
         sections = self.parser.get_body_sections()
-        assert "<h2>The Background</h2>" in sections[0]
-        assert "<h2>Community Ownership</h2>" in sections[1]
-        assert "<h2>The Impact</h2>" in sections[2]
+        full_text = " ".join(sections)
+        assert "The Background" in full_text
+        assert "Community Ownership" in full_text
+        assert "The Impact" in full_text
 
     def test_get_body_image_urls(self):
         urls = self.parser.get_body_image_urls()
-        assert "https://cairngormfoundation.org.uk/sites/default/files/inline-images/community-meeting.jpg" in urls
+        assert len(urls) == 2
+        assert all("sites/default/files" in u for u in urls)
 
 
 class TestCaseStudyParserFixture02:
-    """case_study_02.html: no hero image"""
+    """case_study_02.html: loch-restocking — newer structure, 2 sections, no body images"""
 
     def setup_method(self):
         self.parser = load_fixture("case_study_02.html")
 
     def test_get_title(self):
-        assert self.parser.get_title() == "Loch Broom Angling Club Restocking"
+        assert self.parser.get_title() == "Loch Restocking for Barrhill Angling Club"
 
-    def test_get_hero_image_url_returns_none(self):
-        assert self.parser.get_hero_image_url() is None
+    def test_get_hero_image_url_present(self):
+        # This page has a hero image
+        assert self.parser.get_hero_image_url() is not None
 
     def test_get_fund_name(self):
-        assert self.parser.get_fund_name() == "Strathmore Wind Farm Fund"
+        assert self.parser.get_fund_name() == "Barrhill Community Interest Company"
 
     def test_get_body_sections_count(self):
         sections = self.parser.get_body_sections()
@@ -613,9 +510,13 @@ class TestCaseStudyParserFixture02:
     def test_get_body_image_urls_empty(self):
         assert self.parser.get_body_image_urls() == []
 
+    def test_get_introduction(self):
+        intro = self.parser.get_introduction()
+        assert "Barrhill Angling Club" in intro
+
 
 class TestCaseStudyParserFixture03:
-    """case_study_03.html: Charity Funds category"""
+    """case_study_03.html: brewing-up-strong-blend-of-skills — Charity Funds, 0 sections"""
 
     def setup_method(self):
         self.parser = load_fixture("case_study_03.html")
@@ -624,50 +525,71 @@ class TestCaseStudyParserFixture03:
         assert self.parser.get_category() == "Charity Funds"
 
     def test_get_title(self):
-        assert self.parser.get_title() == "Brewing Up Skills at Kinloch Hospitality"
+        assert self.parser.get_title() == "Brewing up a strong blend of skills"
 
     def test_get_fund_name(self):
-        assert self.parser.get_fund_name() == "The Bairdwatson Charitable Trust"
+        assert self.parser.get_fund_name() == "Bairdwatson Charitable Trust"
+
+    def test_get_body_sections_empty(self):
+        # This page has intro text but no red-brown section headings
+        assert self.parser.get_body_sections() == []
+
+    def test_get_introduction(self):
+        intro = self.parser.get_introduction()
+        assert "Bairdwatson" in intro
 
 
 class TestCaseStudyParserFixture04:
-    """case_study_04.html: minimal content, no body sections"""
+    """case_study_04.html: watten-school-parent-council — older flat structure, no intro, no fund"""
 
     def setup_method(self):
         self.parser = load_fixture("case_study_04.html")
 
     def test_get_title(self):
-        assert self.parser.get_title() == "Glenshee Village Hall Roof Repair"
+        assert "Watten" in self.parser.get_title()
 
     def test_get_body_sections_empty(self):
+        # Older flat pages have no p.red-brown section headings
         assert self.parser.get_body_sections() == []
 
-    def test_get_hero_image_url_returns_none(self):
-        assert self.parser.get_hero_image_url() is None
+    def test_get_hero_image_url_present(self):
+        assert self.parser.get_hero_image_url() is not None
 
-    def test_get_introduction(self):
-        assert "£12,000" in self.parser.get_introduction()
+    def test_get_introduction_empty(self):
+        # Older pages have no p.text-lead
+        assert self.parser.get_introduction() == ""
+
+    def test_get_fund_name_none(self):
+        # This page has no Related fund link
+        assert self.parser.get_fund_name() is None
+
+    def test_get_category(self):
+        assert self.parser.get_category() == "Community Funds"
 
 
 class TestCaseStudyParserFixture05:
-    """case_study_05.html: multiple inline body images"""
+    """case_study_05.html: fischy-music — older flat structure, Charity Funds, no fund"""
 
     def setup_method(self):
         self.parser = load_fixture("case_study_05.html")
 
     def test_get_title(self):
-        assert self.parser.get_title() == "Cairn Makers: Heritage Dry Stone Walling"
+        assert "mental health" in self.parser.get_title().lower()
 
-    def test_get_fund_name(self):
-        assert self.parser.get_fund_name() == "Cairngorm Highland Estates Fund"
+    def test_get_category(self):
+        assert self.parser.get_category() == "Charity Funds"
 
-    def test_get_body_image_urls_count(self):
-        urls = self.parser.get_body_image_urls()
-        assert len(urls) == 2
+    def test_get_fund_name_none(self):
+        assert self.parser.get_fund_name() is None
 
-    def test_get_body_sections_count(self):
-        sections = self.parser.get_body_sections()
-        assert len(sections) == 3
+    def test_get_introduction_empty(self):
+        assert self.parser.get_introduction() == ""
+
+    def test_get_body_sections_empty(self):
+        assert self.parser.get_body_sections() == []
+
+    def test_get_body_image_urls_empty(self):
+        assert self.parser.get_body_image_urls() == []
 ```
 
 - [ ] **Step 2: Run the tests and verify they fail (parser not yet tested)**

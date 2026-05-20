@@ -188,13 +188,7 @@ class CaseStudySeeder(SitemapSeeder):
 
 The filter keeps only URLs that contain `/our-impact/case-studies/` and aren't the index page itself.
 
-Checkpoint — run the seed management command:
-
-```bash
-python manage.py seed
-```
-
-You should see a table showing `CaseStudySeeder` with ~260 resources created at `SEEDED` status.
+Individual pipeline stages can't be run in isolation — the full pipeline runs together in Step 8. Continue to the next step.
 
 ## Step 4: Extracting — fetching the HTML
 
@@ -204,13 +198,7 @@ You should see a table showing `CaseStudySeeder` with ~260 resources created at 
 extractors = [HTTPExtractor()]
 ```
 
-Checkpoint:
-
-```bash
-python manage.py extract
-```
-
-Resources move from `SEEDED` to `EXTRACTED`. The raw HTML of each case study page is stored in `text_data`.
+Individual pipeline stages can't be run in isolation — the full pipeline runs together in Step 8. Continue to the next step.
 
 ## Step 5: Parsing — understanding the HTML before wiring it in
 
@@ -509,13 +497,15 @@ Final checkpoint:
 python manage.py isekai
 ```
 
+The command displays the pipeline configuration and prompts `Start pipeline? [y/N]:` before running. Press `y` to proceed.
+
 Watch the pipeline run. The sequence is:
 
 1. **Seed** — 260 case study resources created at `SEEDED`
 2. **Extract** — HTML fetched, resources move to `EXTRACTED`
 3. **Mine** — images discovered, new `url:` resources created at `SEEDED`
 4. **Extract** (again) — image files downloaded, move to `EXTRACTED`
-5. **Mine** (again) — no new resources found, image resources move to `MINED`
+5. **Mine** (again) — no new resources found; loop exits
 6. **Transform** — case study resources produce `CaseStudyPage` Specs, image resources produce `Image` Specs
 7. **Load** — Wagtail pages and images written to the database
 

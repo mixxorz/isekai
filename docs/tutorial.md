@@ -503,11 +503,13 @@ pytest tutorial/tests/test_parser.py -v
 All tests should pass. Fix any selector mismatches before moving on —
 getting this right now means your pipeline will work without surprises.
 
-## Step 6: Mining — discovering images
+## Step 6: Mining — discovering what the pages reference
 
-Mining discovers related resources from extracted content. Case study pages have a hero image and sometimes body images. Those images need to be downloaded before they can be attached to the Wagtail pages.
-
-`CaseStudyMiner` uses the parser to find image URLs and emits them as new resources:
+Mining exists because content doesn't live in isolation. Case study pages
+reference images — and those images need to be downloaded and stored in
+Wagtail before the pages that reference them can be created. The miner's
+job is to look at an extracted page and emit new resources for everything
+it references.
 
 ```python
 # tutorial/miners.py
@@ -547,7 +549,39 @@ class CaseStudyMiner(BaseMiner):
         return mined
 ```
 
-When the miner emits a `url:` resource, isekai seeds it for extraction. On the next extract pass, those image files are downloaded. Then `ImageTransformer` (already in `Resource.transformers`) picks them up and creates Wagtail `Image` objects.
+!!! note "Why we track `seen` URLs"
+    The same image URL can appear as both the hero and a body image on some
+    pages. Without deduplication, we'd create two resource rows for the
+    same URL and download the image twice.
+
+!!! warning "Image URLs are often variants, not originals"
+    Many CMSes serve images through a resizing or cropping layer. The URL
+    you find in the HTML might look like
+    `/media/images/photo__width-800.jpg` — a resized variant — rather than
+    the original `/media/images/photo.jpg`. If you mine these variant URLs
+    directly, you'll download a degraded version of the image and potentially
+    end up with many near-duplicate entries in your Wagtail image library
+    (one per size variant encountered across pages).
+
+    Before you run the pipeline, inspect the image URLs on a few pages and
+    check whether they follow a variant pattern. If they do, normalize them
+    to their canonical form in the miner before emitting the resource. The
+    exact normalization depends on your source site's URL structure.
+
+When the miner emits a `url:` resource, isekai seeds it for extraction.
+On the next extract pass, those image files are downloaded as binary blobs.
+Then `ImageTransformer` (already in `Resource.transformers`) picks them up
+and creates Wagtail `Image` objects from them.
+
+Wire the miner into your `Resource` model:
+
+```python
+from tutorial.miners import CaseStudyMiner
+
+class Resource(AbstractResource):
+    # ...
+    miners = [CaseStudyMiner()]
+```
 
 ## Step 7: Transforming — mapping HTML to Wagtail fields
 

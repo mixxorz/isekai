@@ -656,30 +656,55 @@ error.
     extracted and transformed. You don't need the image to exist when you
     return this `Spec` — isekai handles the ordering for you.
 
-## Step 8: Loading — writing to the database
+## Step 8: Running the pipeline
 
-The `loaders` list has two entries:
+With all the components wired in, your `Resource` model is complete:
 
 ```python
-loaders = [
-    PageLoader(),
-    ModelLoader(),
-]
+class Resource(AbstractResource):
+    seeders = [CaseStudySeeder()]
+    extractors = [HTTPExtractor()]
+    miners = [CaseStudyMiner()]
+    transformers = [
+        ImageTransformer(),
+        CaseStudyTransformer(),
+    ]
+    loaders = [
+        PageLoader(),
+        ModelLoader(),
+    ]
 ```
 
-`PageLoader` handles `CaseStudyPage` objects. It reads the `__wagtail_parent_page` attribute, creates the page under the right parent in the Wagtail tree, and removes the special attribute before saving so Django doesn't see it as an unknown field.
+The `loaders` list has two entries because there are two kinds of objects
+to create. `PageLoader` handles `CaseStudyPage` objects — it reads the
+`__wagtail_parent_page` attribute, creates the page under the right parent
+in the Wagtail tree, and strips the special attribute before saving.
+`ModelLoader` handles everything else, including the Wagtail `Image`
+objects that `ImageTransformer` produces from the downloaded image resources.
 
-`ModelLoader` handles everything else — including the Wagtail `Image` objects that `ImageTransformer` produces from the mined image resources.
+!!! note "Isekai handles dependency ordering automatically"
+    One of the trickier parts of a content migration is figuring out what
+    to create first. Pages reference images; images need to exist before
+    pages can be saved. Isekai analyses the dependency graph across all
+    your `Spec` objects and determines the correct creation order
+    automatically — you don't need to think about it.
 
-Final checkpoint:
+    For cases where dependencies form a cycle (object A references object B
+    which references object A), isekai uses a partial construction strategy
+    to break the cycle and resolve all references correctly. See
+    [Dependency Resolution](reference/dependency-resolution.md) for a full
+    explanation of how this works.
+
+Run the pipeline:
 
 ```bash
 python manage.py isekai
 ```
 
-The command displays the pipeline configuration and prompts `Start pipeline? [y/N]:` before running. Press `y` to proceed.
+The command displays the pipeline configuration and prompts
+`Start pipeline? [y/N]:` before running. Press `y` to proceed.
 
-Watch the pipeline run. The sequence is:
+The pipeline runs in a fixed sequence:
 
 1. **Seed** — 260 case study resources created at `SEEDED`
 2. **Extract** — HTML fetched, resources move to `EXTRACTED`
@@ -689,7 +714,13 @@ Watch the pipeline run. The sequence is:
 6. **Transform** — case study resources produce `CaseStudyPage` Specs, image resources produce `Image` Specs
 7. **Load** — Wagtail pages and images written to the database
 
-Open the Wagtail admin and navigate to the parent page. You should find all 260 case study pages nested beneath it, each with title, category, fund name, hero image, introduction, and body sections populated.
+If the pipeline stops partway through — a network error, a timeout, a
+keyboard interrupt — run it again. Isekai skips resources that have
+already moved past a stage, so nothing gets re-fetched or re-processed.
+
+Open the Wagtail admin and navigate to the parent page. You should find
+all 260 case study pages nested beneath it, each with title, category,
+fund name, hero image, introduction, and body sections populated.
 
 ## What's next
 

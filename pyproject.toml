@@ -36,6 +36,7 @@ dev = [
     "tox>=4.11.0",
     "pyright>=1.1.400",
     "django-types>=0.19.1",
+    "wagtail>=7.1",
 ]
 test = [
     "freezegun>=1.5.5",

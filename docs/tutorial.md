@@ -195,6 +195,13 @@ class Resource(AbstractResource):
     `AbstractResource` in your project — isekai will raise an error if it
     finds zero or more than one.
 
+Once the model is in place, create and run migrations:
+
+```bash
+python manage.py makemigrations
+python manage.py migrate
+```
+
 As we build each component in the steps below, we'll wire it in here. By
 the end of this tutorial, `Resource` will look like this:
 
@@ -308,9 +315,6 @@ extractors = [HTTPExtractor()]
 
 That one line handles fetching all 260 case study HTML pages and, later
 in the pipeline, all the image files the miner discovers.
-
-Individual pipeline stages can't be run in isolation — the full pipeline
-runs together in Step 8. Continue to the next step.
 
 ## Step 5: Parsing — understanding the HTML before wiring it in
 
@@ -658,6 +662,9 @@ error.
 
 ## Step 8: Running the pipeline
 
+Now that every processor is written and wired in, it's time to run the
+pipeline and see what lands in Wagtail.
+
 With all the components wired in, your `Resource` model is complete:
 
 ```python
@@ -683,11 +690,11 @@ in the Wagtail tree, and strips the special attribute before saving.
 objects that `ImageTransformer` produces from the downloaded image resources.
 
 !!! note "Isekai handles dependency ordering automatically"
-    One of the trickier parts of a content migration is figuring out what
-    to create first. Pages reference images; images need to exist before
-    pages can be saved. Isekai analyses the dependency graph across all
-    your `Spec` objects and determines the correct creation order
-    automatically — you don't need to think about it.
+    Pages reference images; images need to exist before pages can be saved.
+    In a naive migration script you'd have to figure out the creation order
+    yourself. Isekai analyses the dependency graph across all your `Spec`
+    objects and determines the correct order automatically — you don't need
+    to think about it.
 
     For cases where dependencies form a cycle (object A references object B
     which references object A), isekai uses a partial construction strategy

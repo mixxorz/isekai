@@ -98,8 +98,11 @@ class Resource(AbstractResource):
     loaders = [ModelLoader()]
 ```
 
-Each list can contain multiple processors. Isekai tries them in order and uses
-the first one that returns a result for a given resource.
+Each list can contain multiple processors. The behavior depends on the stage:
+
+- **Seeders** and **miners** run all processors and combine their results.
+- **Extractors**, **transformers**, and **loaders** try processors in order and
+  use the first one that returns a result for a given resource.
 
 ## The AbstractResource model
 

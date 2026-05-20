@@ -37,6 +37,7 @@ dev = [
     "pyright>=1.1.400",
     "django-types>=0.19.1",
     "wagtail>=7.1",
+    "zensical>=0.0.43",
 ]
 test = [
     "freezegun>=1.5.5",

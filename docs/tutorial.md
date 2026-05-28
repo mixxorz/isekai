@@ -376,6 +376,9 @@ Now write the parser:
 
 ```python
 # tutorial/parsers.py
+import re
+from urllib.parse import urljoin
+
 from bs4 import BeautifulSoup, Tag
 
 
@@ -409,7 +412,17 @@ class CaseStudyParser:
                         return link.get_text(strip=True)
         return None
 
-    def get_hero_image_url(self) -> str | None:
+    def normalize_image_url(self, src: str, base_url: str) -> tuple[str, str]:
+        """Return (canonical_url, original_url) for an image src."""
+        original_url = urljoin(base_url, src)
+        canonical_url = original_url
+        canonical_url = canonical_url.replace("_cropped", "")
+        canonical_url = re.sub(r"__width-\d+(\.[^.]+)$", r"\1", canonical_url)
+        canonical_url = re.sub(r"_\d+_\d+(\.[^.]+)$", r"\1", canonical_url)
+        canonical_url = re.sub(r"-\d+x\d+(\.[^.]+)$", r"\1", canonical_url)
+        return canonical_url, original_url
+
+    def get_hero_image(self, base_url: str) -> dict[str, str] | None:
         hero_fig = self.soup.find("figure", class_="wide")
         if hero_fig is None:
             return None
@@ -417,7 +430,15 @@ class CaseStudyParser:
         if img is None:
             return None
         src = img.get("src")
-        return str(src) if src else None
+        if not src:
+            return None
+        url, original_url = self.normalize_image_url(str(src), base_url)
+        return {
+            "url": url,
+            "original_src": original_url,
+            "alt_text": str(img.get("alt", "")),
+            "caption": "",
+        }
 
     def get_introduction(self) -> str:
         tag = self.soup.find("p", class_="text-lead")
@@ -463,15 +484,22 @@ class CaseStudyParser:
 
         return sections
 
-    def get_body_image_urls(self) -> list[str]:
-        """Returns image src values found inside div.editor (body content, not hero)."""
-        urls = []
+    def get_body_images(self, base_url: str) -> list[dict[str, str]]:
+        images = []
         for div in self.soup.find_all("div", class_="editor"):
             for img in div.find_all("img"):
                 src = img.get("src")
                 if src:
-                    urls.append(str(src))
-        return urls
+                    url, original_url = self.normalize_image_url(str(src), base_url)
+                    images.append(
+                        {
+                            "url": url,
+                            "original_src": original_url,
+                            "alt_text": str(img.get("alt", "")),
+                            "caption": "",
+                        }
+                    )
+        return images
 ```
 
 A few things worth noting:
@@ -483,7 +511,10 @@ A few things worth noting:
   simply doesn't exist on those pages
 - `get_body_sections()` checks for `red-brown` *without* `text-lead` to
   exclude the intro paragraph, which on newer pages carries both classes
-- `get_body_image_urls()` only looks inside `div.editor`, not the entire
+- `get_hero_image(base_url)` and `get_body_images(base_url)` normalize
+  image URLs to canonical resource keys while preserving the original `src`
+  value in metadata
+- `get_body_images(base_url)` only looks inside `div.editor`, not the entire
   document, so the hero image isn't double-counted
 
 Write tests against each fixture:
@@ -520,9 +551,10 @@ class TestCaseStudyParserFixture01:
     def test_get_body_sections_count(self):
         assert len(self.parser.get_body_sections()) == 4
 
-    def test_get_body_image_urls(self):
-        urls = self.parser.get_body_image_urls()
-        assert len(urls) == 2
+    def test_get_body_images(self):
+        images = self.parser.get_body_images("https://cairngormfoundation.org.uk/")
+        assert len(images) == 2
+        assert images[0]["url"].startswith("https://cairngormfoundation.org.uk/")
 
 # ... and so on for fixtures 02–05
 ```
@@ -569,14 +601,31 @@ class CaseStudyMiner(BaseMiner):
 
         parser = CaseStudyParser(resource.text)
         mined: list[MinedResource] = []
+        base_url = key.value
 
-        hero_url = parser.get_hero_image_url()
-        if hero_url:
-            mined.append(MinedResource(key=Key(type="url", value=hero_url), metadata={}))
-
-        for image_url in parser.get_body_image_urls():
+        hero_image = parser.get_hero_image(base_url)
+        if hero_image:
             mined.append(
-                MinedResource(key=Key(type="url", value=image_url), metadata={})
+                MinedResource(
+                    key=Key(type="url", value=hero_image["url"]),
+                    metadata={
+                        "alt_text": hero_image["alt_text"],
+                        "caption": hero_image["caption"],
+                        "original_src": hero_image["original_src"],
+                    },
+                )
+            )
+
+        for image in parser.get_body_images(base_url):
+            mined.append(
+                MinedResource(
+                    key=Key(type="url", value=image["url"]),
+                    metadata={
+                        "alt_text": image["alt_text"],
+                        "caption": image["caption"],
+                        "original_src": image["original_src"],
+                    },
+                )
             )
 
         return mined
@@ -586,6 +635,10 @@ class CaseStudyMiner(BaseMiner):
     If the miner emits the same `url:` key more than once, isekai still creates
     only one Resource row. Resource keys are primary keys, and the pipeline
     ignores conflicts when saving newly mined resources.
+
+    Isekai deduplicates exact resource keys for you. Normalization is different:
+    it is how you make several source URL strings point at the same canonical key
+    before they reach the database.
 
 !!! warning "Image URLs are often variants, not originals"
     Many CMSes serve images through a resizing or cropping layer. The URL
@@ -659,9 +712,11 @@ class CaseStudyTransformer(BaseTransformer):
             "__wagtail_parent_page": settings.CASE_STUDIES_PARENT_PAGE_ID,
         }
 
-        hero_url = parser.get_hero_image_url()
-        if hero_url:
-            attributes["hero_image"] = BlobRef(Key(type="url", value=hero_url))
+        hero_image = parser.get_hero_image(key.value)
+        if hero_image:
+            attributes["hero_image"] = BlobRef(
+                Key(type="url", value=hero_image["url"])
+            )
 
         return Spec(
             content_type="tutorial.casestudypage",
@@ -680,7 +735,7 @@ to know where in the Wagtail page tree to attach the new page. It's removed
 before Django sees the attributes, so it won't cause an "unexpected field"
 error.
 
-**`BlobRef(Key(type="url", value=hero_url))`** deserves a closer look:
+**`BlobRef(Key(type="url", value=hero_image["url"]))`** deserves a closer look:
 
 !!! warning "BlobRef is lazy — the image doesn't need to exist yet"
     `BlobRef` is a *reference*, not a value. It says "when you load this

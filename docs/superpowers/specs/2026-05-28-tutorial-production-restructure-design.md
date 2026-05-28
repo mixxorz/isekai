@@ -71,13 +71,13 @@ The main path should remain clear enough for a first-time reader. Advanced mater
 
 Keep the current narrative opening, but tighten any claims that overpromise. The tutorial should say the pipeline handles hero images and body images where present, not that every imported page necessarily has every field populated.
 
-Quote the Wagtail extra install command:
+Recommend installing the base package:
 
 ```bash
-pip install "isekai-django[wagtail]"
+pip install isekai-django
 ```
 
-Since BeautifulSoup is already a dependency of isekai, the tutorial may still mention it explicitly for parser code, but should avoid implying it is a separate hard requirement unless the user has installed isekai without dependencies.
+The tutorial uses Wagtail integrations, but the install guidance should not recommend `isekai-django[wagtail]`. Since BeautifulSoup is already a dependency of isekai, the tutorial may still mention it explicitly for parser code, but should avoid implying it is a separate hard requirement unless the user has installed isekai without dependencies.
 
 ### Destination model
 
@@ -160,8 +160,8 @@ Use references for body image blocks rather than preserving old image HTML:
 Explain reference types briefly:
 
 - `BlobRef` resolves to a file-like object and is useful for file fields.
-- `ResourceRef` resolves to the model object created from another resource, or to one of its attributes such as `.pk`.
-- `ModelRef` resolves an existing database object.
+- `ResourceRef` resolves lazily to the model object created from another resource. Dot notation such as `ResourceRef(image_key).pk` resolves to the eventual attribute value after the resource is loaded.
+- `ModelRef` resolves lazily to an existing database object. Dot notation such as `ModelRef("images.CustomImage", pk=1).file.url` resolves to the requested attribute path at load time.
 
 ### Running the pipeline
 
@@ -239,7 +239,7 @@ Docs should be self-checked for:
 
 - `AbstractResource.key` defaults to 1024 characters.
 - Tests cover the default key length.
-- The tutorial install command quotes the Wagtail extra.
+- The tutorial install command recommends `pip install isekai-django`, not the Wagtail extra.
 - The tutorial explains exact processor ordering behavior.
 - The tutorial resolves relative image URLs before emitting `url:` keys.
 - The tutorial normalizes image variant URLs and preserves `original_src` metadata.

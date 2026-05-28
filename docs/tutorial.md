@@ -35,17 +35,16 @@ LOADED** — and where a failed or interrupted run can always pick up from
 where it stopped.
 
 In this tutorial we'll build a real migration: moving 260 case study pages
-from the Cairngorm Foundation website into a new Wagtail site, complete with
-hero images, body images, categories, and fund names. By the end you'll have
-a pipeline that handles all of that — and if it stops halfway through, you
-can run it again and it'll skip everything that already worked.
+from the Cairngorm Foundation website into a new Wagtail site. By the end
+you'll have a pipeline that handles the page content, hero images, body images
+where present, categories, and fund names — and if it stops halfway through,
+you can run it again and it'll skip everything that already worked.
 
 ## Prerequisites
 
 - A working Django + Wagtail project
 - Python 3.10+
-- isekai installed: `pip install isekai-django[wagtail]`
-- BeautifulSoup4 installed: `pip install beautifulsoup4`
+- isekai installed: `pip install isekai-django`
 
 ## Step 0: Planning — Understand the data before you write a line
 
@@ -120,6 +119,7 @@ looks like:
 from django.db import models
 from wagtail import blocks
 from wagtail.fields import RichTextField, StreamField
+from wagtail.images.blocks import ImageChooserBlock
 from wagtail.models import Page
 
 
@@ -135,7 +135,18 @@ class CaseStudyPage(Page):
     )
     introduction = RichTextField(blank=True)
     body = StreamField(
-        [("section", blocks.RichTextBlock())],
+        [
+            ("section", blocks.RichTextBlock()),
+            (
+                "image",
+                blocks.StructBlock(
+                    [
+                        ("image", ImageChooserBlock()),
+                        ("caption", blocks.CharBlock(required=False)),
+                    ]
+                ),
+            ),
+        ],
         blank=True,
         use_json_field=True,
     )
@@ -155,10 +166,11 @@ class CaseStudyPage(Page):
 This is the destination. Everything the pipeline does — fetching, parsing,
 downloading images — is in service of populating these fields.
 
-The `body` StreamField uses `RichTextBlock` for each section, which
-preserves the HTML from the source page. The `hero_image` FK points at
-Wagtail's built-in `Image` model — isekai will create those `Image` objects
-automatically when it processes the mined image resources.
+The `body` StreamField has one block for rich text sections and one for images.
+That matters: body images should become Wagtail image references, not old
+`<img src="...">` tags pointing back at the source site. The `hero_image` FK
+points at Wagtail's built-in `Image` model — isekai will create those `Image`
+objects automatically when it processes the mined image resources.
 
 Find the parent page ID in the Wagtail admin by navigating to the page you
 want case studies nested under and noting the ID in the URL

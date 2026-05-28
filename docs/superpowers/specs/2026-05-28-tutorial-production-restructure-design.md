@@ -9,13 +9,13 @@ Restructure `docs/tutorial.md` so it remains an approachable Cairngorm case stud
 
 The tutorial should stay narrative and readable, but the examples must be accurate enough for a real Wagtail migration. It should cover URL normalization, image variants, body image references, Wagtail rich text conversion, metadata-only resources, failed resource inspection, and restart behavior.
 
-This work also includes a small library correction: increase the default `AbstractResource.key` length from 255 to 1024 characters. URL-based resource keys are a core use case, and real migrations can exceed 255 characters. Since `AbstractResource` is abstract, user projects will generate migrations for their concrete `Resource` models.
+This work also includes a small library correction: increase the default `AbstractResource.key` length from 255 to 768 characters. URL-based resource keys are a core use case, and real migrations can exceed 255 characters. The 768-character default keeps utf8mb4 primary-key indexes compatible with common MySQL/InnoDB limits while still being URL-friendly. Since `AbstractResource` is abstract, user projects will generate migrations for their concrete `Resource` models.
 
 ## Scope
 
 In scope:
 
-- Update `AbstractResource.key` to `max_length=1024` by default.
+- Update `AbstractResource.key` to `max_length=768` by default.
 - Revise `docs/tutorial.md` around the existing Cairngorm case study.
 - Add production hardening sections and callouts where they naturally fit.
 - Correct inaccurate tutorial claims about processor ordering, command behavior, references, and Wagtail handling.
@@ -43,7 +43,7 @@ key = models.CharField(max_length=255, primary_key=True, db_index=True)
 to:
 
 ```python
-key = models.CharField(max_length=1024, primary_key=True, db_index=True)
+key = models.CharField(max_length=768, primary_key=True, db_index=True)
 ```
 
 The tutorial should no longer recommend overriding `key` for normal URL-heavy migrations. It can mention that users may still override the field if their database or source data needs a different limit.
@@ -225,7 +225,7 @@ Implementation should verify:
 
 - `uv run pytest`
 - `uv run tox -e lint,type` because library code changes are included.
-- A focused assertion that `AbstractResource._meta.get_field("key").max_length == 1024`, either in an existing model test file or a new minimal test.
+- A focused assertion that `AbstractResource._meta.get_field("key").max_length == 768`, either in an existing model test file or a new minimal test.
 
 Docs should be self-checked for:
 
@@ -237,7 +237,7 @@ Docs should be self-checked for:
 
 ## Acceptance Criteria
 
-- `AbstractResource.key` defaults to 1024 characters.
+- `AbstractResource.key` defaults to 768 characters for a MySQL-compatible URL-friendly key length.
 - Tests cover the default key length.
 - The tutorial install command recommends `pip install isekai-django`, not the Wagtail extra.
 - The tutorial explains exact processor ordering behavior.

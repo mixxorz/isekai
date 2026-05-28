@@ -23,7 +23,7 @@ class TestAbstractResource:
     def test_key_field_defaults_to_url_friendly_length(self):
         """Resource keys should be long enough for real migrated URLs."""
         key_field = ConcreteResource._meta.get_field("key")
-        assert key_field.max_length == 1024
+        assert key_field.max_length == 768
 
     def test_status_choices(self):
         """Test status choices are available"""

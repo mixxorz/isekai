@@ -250,18 +250,37 @@ class Resource(AbstractResource):
         verbose_name_plural = "Resources"
 ```
 
-Each list is a set of processors for that pipeline stage:
+You can also register the resource model in the Django admin:
 
-- **seeders** — generate the initial list of resource keys (URLs to migrate)
-- **extractors** — fetch raw data for each resource (HTTP requests)
-- **miners** — discover related resources from extracted content (images)
-- **transformers** — convert extracted content into a `Spec` describing what Django model to create
-- **loaders** — write the `Spec` to the database
+```python
+# tutorial/admin.py
+from django.contrib import admin
 
-When a stage has multiple processors, isekai tries them in order and uses
-the first one that returns a result. This is how `ImageTransformer` and
-`CaseStudyTransformer` coexist: each handles a different type of resource
-and returns `None` for the other.
+from isekai.admin import AbstractResourceAdmin
+
+from tutorial.models import Resource
+
+
+@admin.register(Resource)
+class ResourceAdmin(AbstractResourceAdmin):
+    pass
+```
+
+This is not required for the pipeline, but it is useful during a migration.
+The admin shows each resource's status and `last_error`, which makes failed
+runs much easier to inspect.
+
+Processor ordering depends on the stage:
+
+- Seeders all run.
+- Miners all run.
+- Extractors are tried in order until one returns a resource.
+- Transformers are tried in order until one returns a `Spec`.
+- Loaders are tried in order until one returns created objects for the current load node.
+
+That is why specific extractors go before generic extractors. If you add a
+custom image extractor, put it before `HTTPExtractor()` so it gets first chance
+at image URLs.
 
 ## Step 3: Seeding — building the list of what to migrate
 

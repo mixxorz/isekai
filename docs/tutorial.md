@@ -103,6 +103,7 @@ Inspect one page manually and list what you can extract:
 - **Hero image** — from `<figure class="wide"> img`
 - **Introduction** — from `<p class="text-lead">` (newer pages only)
 - **Body sections** — from `<p class="red-brown">` headings inside `<div class="editor">`
+- **Body images** — from images inside `<div class="editor">`
 
 Older pages have a simpler flat structure with no introduction or sections.
 Your parser needs to handle both gracefully — we'll come back to that in
@@ -168,9 +169,10 @@ downloading images — is in service of populating these fields.
 
 The `body` StreamField has one block for rich text sections and one for images.
 That matters: body images should become Wagtail image references, not old
-`<img src="...">` tags pointing back at the source site. The `hero_image` FK
-points at Wagtail's built-in `Image` model — isekai will create those `Image`
-objects automatically when it processes the mined image resources.
+`<img src="...">` tags pointing back at the source site. We'll wire those image
+blocks in when we build the transformer in Step 7. The `hero_image` FK points
+at Wagtail's built-in `Image` model — isekai will create those `Image` objects
+automatically when it processes the mined image resources.
 
 Find the parent page ID in the Wagtail admin by navigating to the page you
 want case studies nested under and noting the ID in the URL

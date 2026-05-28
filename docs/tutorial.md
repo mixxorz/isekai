@@ -512,8 +512,10 @@ A few things worth noting:
 - `get_body_sections()` checks for `red-brown` *without* `text-lead` to
   exclude the intro paragraph, which on newer pages carries both classes
 - `get_hero_image(base_url)` and `get_body_images(base_url)` normalize
-  image URLs to canonical resource keys while preserving the original `src`
-  value in metadata
+  image URLs to canonical resource keys
+- `original_src` keeps the absolute, unnormalized source URL so fallback
+  extractors can try the URL that appeared in the page after resolving it
+  against the page URL
 - `get_body_images(base_url)` only looks inside `div.editor`, not the entire
   document, so the hero image isn't double-counted
 
@@ -550,6 +552,15 @@ class TestCaseStudyParserFixture01:
 
     def test_get_body_sections_count(self):
         assert len(self.parser.get_body_sections()) == 4
+
+    def test_get_hero_image(self):
+        image = self.parser.get_hero_image("https://cairngormfoundation.org.uk/")
+        assert image is not None
+        assert image["url"].startswith("https://cairngormfoundation.org.uk/")
+        assert image["original_src"].startswith(
+            "https://cairngormfoundation.org.uk/"
+        )
+        assert "alt_text" in image
 
     def test_get_body_images(self):
         images = self.parser.get_body_images("https://cairngormfoundation.org.uk/")

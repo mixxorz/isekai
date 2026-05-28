@@ -16,20 +16,16 @@ class CaseStudyMiner(BaseMiner):
 
         parser = CaseStudyParser(resource.text)
         mined: list[MinedResource] = []
-        seen: set[str] = set()
 
         hero_url = parser.get_hero_image_url()
-        if hero_url and hero_url not in seen:
-            seen.add(hero_url)
+        if hero_url:
             mined.append(
                 MinedResource(key=Key(type="url", value=hero_url), metadata={})
             )
 
         for image_url in parser.get_body_image_urls():
-            if image_url not in seen:
-                seen.add(image_url)
-                mined.append(
-                    MinedResource(key=Key(type="url", value=image_url), metadata={})
-                )
+            mined.append(
+                MinedResource(key=Key(type="url", value=image_url), metadata={})
+            )
 
         return mined

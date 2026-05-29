@@ -679,13 +679,23 @@ class Command(BaseCommand):
         for fixture_path in sorted(fixtures_dir.glob("*.html")):
             parser = CaseStudyParser(fixture_path.read_text(encoding="utf-8"))
             base_url = "https://cairngormfoundation.org.uk/"
+            hero_image = parser.get_hero_image(base_url)
+            introduction = parser.get_introduction()
 
             self.stdout.write(f"\n{fixture_path.name}")
             self.stdout.write(f"  title: {parser.get_title() or '(missing)'}")
             self.stdout.write(f"  category: {parser.get_category() or '(missing)'}")
             self.stdout.write(f"  fund: {parser.get_fund_name() or '(missing)'}")
+            self.stdout.write(f"  hero image: {'yes' if hero_image else 'no'}")
+            self.stdout.write(f"  introduction: {'yes' if introduction else 'no'}")
             self.stdout.write(f"  sections: {len(parser.get_body_sections())}")
             self.stdout.write(f"  body images: {len(parser.get_body_images(base_url))}")
+```
+
+Checkpoint:
+
+```bash
+python manage.py report_case_study_fixtures
 ```
 
 In the real miner and transformer, use the full page URL as `base_url`. The

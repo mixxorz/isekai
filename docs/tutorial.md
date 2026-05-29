@@ -760,6 +760,35 @@ class Resource(AbstractResource):
     miners = [CaseStudyMiner()]
 ```
 
+!!! note "Not every mined resource needs HTTP"
+    Sometimes a page reveals objects that do not need to be fetched: tags,
+    categories, embedded forms, or other snippets. You can still mine them as
+    resources with keys like `tag:community-funds` or `form:donate-now`. Because
+    the pipeline expects every resource to pass through extraction, pair those keys
+    with a no-op extractor that turns metadata into a `TextResource`.
+
+    ```python
+    # tutorial/extractors.py
+    from isekai.extractors import BaseExtractor
+    from isekai.types import Key, TextResource
+
+
+    class NoopExtractor(BaseExtractor):
+        def extract(self, key: Key, metadata: dict | None = None) -> TextResource | None:
+            if key.type not in {"tag", "form", "category"}:
+                return None
+
+            return TextResource(
+                mime_type="text/plain",
+                text=str(key),
+                metadata=metadata or {},
+            )
+    ```
+
+    Put `NoopExtractor()` before `HTTPExtractor()`. Otherwise `HTTPExtractor` will
+    see a non-URL key, return `None`, and the no-op extractor still works, but
+    specific-first ordering keeps the configuration easier to read.
+
 ## Step 7: Transforming — mapping content to a model description
 
 A transformer reads an extracted resource and returns a `Spec` — a

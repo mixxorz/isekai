@@ -655,6 +655,43 @@ pytest tutorial/tests/test_parser.py -v
 All tests should pass. Fix any selector mismatches before moving on —
 getting this right now means your pipeline will work without surprises.
 
+Tests tell you whether expected selectors still work. A report tells you
+whether the parsed output looks sane across real fixture pages. Use both before
+running the full pipeline.
+
+An optional report command can print a compact summary for every fixture:
+
+```python
+# tutorial/management/commands/report_case_study_fixtures.py
+from pathlib import Path
+
+from django.core.management.base import BaseCommand
+
+from tutorial.parsers import CaseStudyParser
+
+
+class Command(BaseCommand):
+    help = "Print parsed case study fixture summaries"
+
+    def handle(self, *args, **options):
+        fixtures_dir = Path("tutorial/tests/fixtures/case_studies")
+
+        for fixture_path in sorted(fixtures_dir.glob("*.html")):
+            parser = CaseStudyParser(fixture_path.read_text(encoding="utf-8"))
+            base_url = "https://cairngormfoundation.org.uk/"
+
+            self.stdout.write(f"\n{fixture_path.name}")
+            self.stdout.write(f"  title: {parser.get_title() or '(missing)'}")
+            self.stdout.write(f"  category: {parser.get_category() or '(missing)'}")
+            self.stdout.write(f"  fund: {parser.get_fund_name() or '(missing)'}")
+            self.stdout.write(f"  sections: {len(parser.get_body_sections())}")
+            self.stdout.write(f"  body images: {len(parser.get_body_images(base_url))}")
+```
+
+In the real miner and transformer, use the full page URL as `base_url`. The
+site root is enough for this summary command because Cairngorm image paths are
+root-relative or absolute, and the command only reports counts.
+
 ## Step 6: Mining — discovering what the pages reference
 
 Mining exists because content doesn't live in isolation. Case study pages
@@ -981,6 +1018,33 @@ already moved past a stage, so nothing gets re-fetched or re-processed.
 Open the Wagtail admin and navigate to the parent page. You should find
 all 260 case study pages nested beneath it, each with title, category,
 fund name, hero image, introduction, and body sections populated.
+
+## Troubleshooting a real run
+
+### Find failed resources
+
+```python
+Resource.objects.exclude(last_error="").values("key", "status", "last_error")
+```
+
+### Invalid refs during transform
+
+This means a transformer referenced a resource key that was never seeded or mined.
+Check that the miner and transformer use the same normalized URL.
+
+### Images that 404
+
+If the image is optional, leave the reference out. If the source site has known
+fallback patterns, add a specific image extractor before `HTTPExtractor()`.
+
+### Missing parent page
+
+If `PageLoader` cannot find `CASE_STUDIES_PARENT_PAGE_ID`, check the ID in the
+Wagtail admin and make sure the setting is available to Django.
+
+### Unknown content type
+
+Use the lowercased `app_label.modelname` form, such as `tutorial.casestudypage`.
 
 ## What you built
 

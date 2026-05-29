@@ -797,7 +797,7 @@ class CaseStudyTransformer(BaseTransformer):
                 {
                     "type": "image",
                     "value": {
-                        "image": ResourceRef(image_key),
+                        "image": ResourceRef(image_key).pk,
                         "caption": image["caption"],
                     },
                 }
@@ -839,7 +839,7 @@ class CaseStudyTransformer(BaseTransformer):
         )
 ```
 
-Three things worth understanding here:
+A few things are worth understanding here:
 
 **`content_type="tutorial.casestudypage"`** tells the loader which Django
 model to instantiate. It's the app label plus the model name, lowercased —
@@ -853,7 +853,8 @@ error.
 **`build_body_blocks()`** appends image blocks after section blocks because this
 simple parser extracts body sections and body images separately. If preserving
 the exact source order matters, parse the body as an ordered sequence of blocks
-instead.
+instead. The body image blocks use `ResourceRef(image_key).pk` because Wagtail
+image chooser blocks store image IDs in raw StreamField data.
 
 **`ResourceRef(hero_key).pk`** deserves a closer look:
 

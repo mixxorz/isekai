@@ -770,15 +770,38 @@ describes the object. The loader (Step 8) does the actual creating.
 ```python
 # tutorial/transformers.py
 from django.conf import settings
+from wagtail.admin.rich_text.converters.editor_html import EditorHTMLConverter
 
 from isekai.transformers import BaseTransformer
-from isekai.types import BlobRef, BlobResource, Key, Spec, TextResource
+from isekai.types import BlobResource, Key, ResourceRef, Spec, TextResource
 
 from tutorial.parsers import CaseStudyParser
 
 
 class CaseStudyTransformer(BaseTransformer):
     """Transforms an extracted case study HTML page into a CaseStudyPage Spec."""
+
+    def build_body_blocks(
+        self, parser: CaseStudyParser, base_url: str, converter: EditorHTMLConverter
+    ) -> list[tuple[str, str | dict[str, object]]]:
+        blocks: list[tuple[str, str | dict[str, object]]] = []
+
+        for section in parser.get_body_sections():
+            blocks.append(("section", converter.to_database_format(section)))
+
+        for image in parser.get_body_images(base_url):
+            image_key = Key(type="url", value=image["url"])
+            blocks.append(
+                (
+                    "image",
+                    {
+                        "image": ResourceRef(image_key),
+                        "caption": image["caption"],
+                    },
+                )
+            )
+
+        return blocks
 
     def transform(self, key: Key, resource: TextResource | BlobResource) -> Spec | None:
         if key.type != "url":
@@ -791,23 +814,22 @@ class CaseStudyTransformer(BaseTransformer):
         if not title:
             return None
 
+        converter = EditorHTMLConverter()
+        base_url = key.value
+
         attributes: dict = {
             "title": title,
             "category": parser.get_category(),
             "fund_name": parser.get_fund_name() or "",
-            "introduction": parser.get_introduction(),
-            "body": [
-                {"type": "section", "value": section}
-                for section in parser.get_body_sections()
-            ],
+            "introduction": converter.to_database_format(parser.get_introduction()),
+            "body": self.build_body_blocks(parser, base_url, converter),
             "__wagtail_parent_page": settings.CASE_STUDIES_PARENT_PAGE_ID,
         }
 
-        hero_image = parser.get_hero_image(key.value)
+        hero_image = parser.get_hero_image(base_url)
         if hero_image:
-            attributes["hero_image"] = BlobRef(
-                Key(type="url", value=hero_image["url"])
-            )
+            hero_key = Key(type="url", value=hero_image["url"])
+            attributes["hero_image_id"] = ResourceRef(hero_key).pk
 
         return Spec(
             content_type="tutorial.casestudypage",
@@ -826,14 +848,26 @@ to know where in the Wagtail page tree to attach the new page. It's removed
 before Django sees the attributes, so it won't cause an "unexpected field"
 error.
 
-**`BlobRef(Key(type="url", value=hero_image["url"]))`** deserves a closer look:
+**`ResourceRef(hero_key).pk`** deserves a closer look:
 
-!!! warning "BlobRef is lazy — the image doesn't need to exist yet"
-    `BlobRef` is a *reference*, not a value. It says "when you load this
-    page, set `hero_image` to whatever Wagtail `Image` was created from this
+!!! warning "References are lazy — images don't need to exist yet"
+    `ResourceRef` is a *reference*, not a value. It says "when you load this
+    page, set this field to whatever Wagtail `Image` was created from this
     URL." The loader resolves it at load time, after the image has been
     extracted and transformed. You don't need the image to exist when you
     return this `Spec` — isekai handles the ordering for you.
+
+    `ResourceRef` and `ModelRef` both support lazy dot notation.
+    `ResourceRef(hero_key)` resolves to the object created from that resource.
+    `ResourceRef(hero_key).pk` resolves to the eventual primary key.
+    `ModelRef("images.CustomImage", pk=1).file.url` looks up an existing model
+    and resolves the requested attribute path at load time.
+
+!!! note "Refs are validated during transform"
+    Isekai checks refs during transform. If this transformer returns a
+    `ResourceRef` for a key that was never seeded or mined, transform fails
+    with an invalid-ref error. That is why the miner and transformer must use
+    the same normalized URL.
 
 ## Step 8: Running the pipeline
 

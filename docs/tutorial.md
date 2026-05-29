@@ -528,6 +528,7 @@ from pathlib import Path
 from tutorial.parsers import CaseStudyParser
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "case_studies"
+PAGE_URL = "https://cairngormfoundation.org.uk/our-impact/case-studies/reopening-crosswater/"
 
 
 def load_fixture(filename: str) -> CaseStudyParser:
@@ -554,16 +555,16 @@ class TestCaseStudyParserFixture01:
         assert len(self.parser.get_body_sections()) == 4
 
     def test_get_hero_image(self):
-        image = self.parser.get_hero_image("https://cairngormfoundation.org.uk/")
-        assert image is not None
-        assert image["url"].startswith("https://cairngormfoundation.org.uk/")
-        assert image["original_src"].startswith(
+        hero_image = self.parser.get_hero_image(PAGE_URL)
+        assert hero_image is not None
+        assert hero_image["url"].startswith("https://cairngormfoundation.org.uk/")
+        assert hero_image["original_src"].startswith(
             "https://cairngormfoundation.org.uk/"
         )
-        assert "alt_text" in image
+        assert "alt_text" in hero_image
 
     def test_get_body_images(self):
-        images = self.parser.get_body_images("https://cairngormfoundation.org.uk/")
+        images = self.parser.get_body_images(PAGE_URL)
         assert len(images) == 2
         assert images[0]["url"].startswith("https://cairngormfoundation.org.uk/")
 
@@ -650,6 +651,14 @@ class CaseStudyMiner(BaseMiner):
     Isekai deduplicates exact resource keys for you. Normalization is different:
     it is how you make several source URL strings point at the same canonical key
     before they reach the database.
+
+    One caveat: when several image variants normalize to the same resource key,
+    only one `Resource` row is created, so only the metadata from the first
+    created row is kept. `original_src` gives the extractor the first
+    unnormalized URL we saw. If your source site needs several fallback
+    candidates per image, derive those variants in the extractor from the
+    canonical URL, or collect the candidates in the miner before emitting one
+    resource.
 
 !!! warning "Image URLs are often variants, not originals"
     Many CMSes serve images through a resizing or cropping layer. The URL

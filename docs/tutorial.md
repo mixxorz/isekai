@@ -783,22 +783,24 @@ class CaseStudyTransformer(BaseTransformer):
 
     def build_body_blocks(
         self, parser: CaseStudyParser, base_url: str, converter: EditorHTMLConverter
-    ) -> list[tuple[str, str | dict[str, object]]]:
-        blocks: list[tuple[str, str | dict[str, object]]] = []
+    ) -> list[dict[str, object]]:
+        blocks: list[dict[str, object]] = []
 
         for section in parser.get_body_sections():
-            blocks.append(("section", converter.to_database_format(section)))
+            blocks.append(
+                {"type": "section", "value": converter.to_database_format(section)}
+            )
 
         for image in parser.get_body_images(base_url):
             image_key = Key(type="url", value=image["url"])
             blocks.append(
-                (
-                    "image",
-                    {
+                {
+                    "type": "image",
+                    "value": {
                         "image": ResourceRef(image_key),
                         "caption": image["caption"],
                     },
-                )
+                }
             )
 
         return blocks
@@ -847,6 +849,11 @@ the same format Django uses for `ContentType`.
 to know where in the Wagtail page tree to attach the new page. It's removed
 before Django sees the attributes, so it won't cause an "unexpected field"
 error.
+
+**`build_body_blocks()`** appends image blocks after section blocks because this
+simple parser extracts body sections and body images separately. If preserving
+the exact source order matters, parse the body as an ordered sequence of blocks
+instead.
 
 **`ResourceRef(hero_key).pk`** deserves a closer look:
 

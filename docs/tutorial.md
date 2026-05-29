@@ -1021,7 +1021,13 @@ fund name, hero image, introduction, and body sections populated.
 
 ## Troubleshooting a real run
 
-### Find failed resources
+### Find failed resources with a shell query
+
+```bash
+python manage.py shell -c "from tutorial.models import Resource; print(list(Resource.objects.exclude(last_error='').values('key', 'status', 'last_error')))"
+```
+
+The ORM expression is:
 
 ```python
 Resource.objects.exclude(last_error="").values("key", "status", "last_error")

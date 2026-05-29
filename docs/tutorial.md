@@ -765,7 +765,8 @@ class Resource(AbstractResource):
     categories, embedded forms, or other snippets. You can still mine them as
     resources with keys like `tag:community-funds` or `form:donate-now`. Because
     the pipeline expects every resource to pass through extraction, pair those keys
-    with a no-op extractor that turns metadata into a `TextResource`.
+    with a no-op extractor that creates a placeholder `TextResource` while
+    preserving metadata.
 
     ```python
     # tutorial/extractors.py
@@ -788,6 +789,12 @@ class Resource(AbstractResource):
     Put `NoopExtractor()` before `HTTPExtractor()`. Otherwise `HTTPExtractor` will
     see a non-URL key, return `None`, and the no-op extractor still works, but
     specific-first ordering keeps the configuration easier to read.
+
+    These resources still advance through mining, extraction, transformation, and
+    loading like any other resource, so they also need a matching transformer later.
+    Without one, transform fails because no transformer handles `tag:`, `form:`, or
+    `category:` resources. This pattern is optional and outside the scope of the
+    main Cairngorm migration built in this tutorial.
 
 ## Step 7: Transforming — mapping content to a model description
 

@@ -349,6 +349,77 @@ extractors = [HTTPExtractor()]
 That one line handles fetching all 260 case study HTML pages and, later
 in the pipeline, all the image files the miner discovers.
 
+### Optional: Falling back when image originals 404
+
+Some sites reference image originals that no longer exist, while cropped or
+resized variants still return successfully. In that case, put the fallback
+logic in a specific image extractor and leave `HTTPExtractor` as the generic
+default:
+
+```python
+# tutorial/extractors.py
+import re
+
+import requests
+
+from isekai.extractors import HTTPExtractor
+from isekai.types import Key
+
+
+class CaseStudyImageExtractor(HTTPExtractor):
+    def extract(self, key: Key, metadata: dict | None = None):
+        if key.type != "url" or not self._is_image_url(key.value):
+            return None
+
+        try:
+            return super().extract(key, metadata)
+        except requests.exceptions.HTTPError as error:
+            if error.response is None or error.response.status_code != 404:
+                raise
+            original_error = error
+
+        for fallback_url in self._fallback_urls(key.value, metadata or {}):
+            try:
+                return super().extract(Key(type="url", value=fallback_url), metadata)
+            except requests.exceptions.HTTPError:
+                continue
+
+        raise original_error
+
+    def _is_image_url(self, url: str) -> bool:
+        return url.lower().endswith((".jpg", ".jpeg", ".png", ".gif", ".webp"))
+
+    def _fallback_urls(self, url: str, metadata: dict) -> list[str]:
+        urls = []
+        original_src = metadata.get("original_src")
+        if original_src and original_src != url:
+            urls.append(original_src)
+        urls.append(self._with_suffix(url, "_cropped"))
+        urls.append(self._with_suffix(url, "_778_518"))
+        return urls
+
+    def _with_suffix(self, url: str, suffix: str) -> str:
+        return re.sub(r"(\.[^.]+)$", rf"{suffix}\1", url)
+```
+
+Do not copy these suffixes blindly. They are examples of the kind of fallback
+you might need after inspecting your source site. The important pattern is to
+mine one canonical key, keep the original URL in metadata, and let a specific
+image extractor try known fallbacks before the generic `HTTPExtractor` runs.
+
+Wire the custom extractor before the generic one:
+
+```python
+extractors = [
+    CaseStudyImageExtractor(max_retries=8, max_delay=300),
+    HTTPExtractor(max_retries=8, max_delay=300),
+]
+```
+
+The order matters because extractors are tried in order. Put the custom image
+extractor first so it gets a chance to handle image URLs and try fallbacks;
+everything else can continue through `HTTPExtractor`.
+
 ## Step 5: Parsing — understanding the HTML before wiring it in
 
 Before connecting any parser to the pipeline, write and test it against

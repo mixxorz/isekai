@@ -454,7 +454,7 @@ from bs4 import BeautifulSoup, Tag
 
 
 class CaseStudyParser:
-    """Extracts structured data from a Foundation Scotland case study HTML page."""
+    """Extracts structured data from a Cairngorm Foundation case study HTML page."""
 
     def __init__(self, html: str):
         self.soup = BeautifulSoup(html, "html.parser")
@@ -1026,8 +1026,9 @@ keyboard interrupt — run it again. Isekai skips resources that have
 already moved past a stage, so nothing gets re-fetched or re-processed.
 
 Open the Wagtail admin and navigate to the parent page. You should find
-all 260 case study pages nested beneath it, each with title, category,
-fund name, hero image, introduction, and body sections populated.
+all 260 case study pages nested beneath it, each with title and category
+populated. Newer pages will also have hero images, introductions, and body
+sections where the source page provided them.
 
 ## Troubleshooting a real run
 
@@ -1065,10 +1066,10 @@ Use the lowercased `app_label.modelname` form, such as `tutorial.casestudypage`.
 ## What you built
 
 You started with a deadline and a blank file. Now 260 case studies are
-in Wagtail — titles, categories, fund names, hero images, body sections,
-all of it. The pipeline handled the ordering, the retries, the inconsistent
-HTML structure across older and newer pages. You described what each stage
-should do; isekai did the coordination.
+in Wagtail — titles, categories, fund names where present, hero images,
+body sections and images. The pipeline handled the ordering, the restarts,
+the inconsistent HTML structure across older and newer pages. You described
+what each stage should do; isekai did the coordination.
 
 !!! success "What we learned"
     - **Understand the shape of your data before writing any code.** Five

@@ -38,6 +38,7 @@ dev = [
     "django-types>=0.19.1",
     "wagtail>=7.1",
     "zensical>=0.0.43",
+    "fixit>=2",
 ]
 test = [
     "freezegun>=1.5.5",

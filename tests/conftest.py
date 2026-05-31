@@ -2,6 +2,8 @@ import os
 
 import django
 import pytest
+from django.apps import apps
+from django.conf import settings
 
 # Configure Django before importing models
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "tests.settings")
@@ -17,11 +19,11 @@ def _media_tmpdir(settings, tmp_path):
 def _setup_wagtail_initial_data(django_db_setup, django_db_blocker):
     """Create Wagtail's initial data (root page, site, collection) when migrations are disabled."""
     with django_db_blocker.unblock():
-        from django.conf import settings
-        from django.contrib.contenttypes.models import ContentType
-        from wagtail.models import Page, Site
-        from wagtail.models.i18n import Locale
-        from wagtail.models.media import Collection
+        ContentType = apps.get_model("contenttypes", "ContentType")
+        Page = apps.get_model("wagtailcore", "Page")
+        Site = apps.get_model("wagtailcore", "Site")
+        Locale = apps.get_model("wagtailcore", "Locale")
+        Collection = apps.get_model("wagtailcore", "Collection")
 
         # Create default locale
         if not Locale.objects.exists():

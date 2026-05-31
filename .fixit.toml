@@ -1,0 +1,8 @@
+[tool.fixit]
+root = true
+enable = [
+    ".lint_rules.no_nested_imports:NoNestedImportsRule",
+]
+disable = [
+    "fixit.rules",
+]

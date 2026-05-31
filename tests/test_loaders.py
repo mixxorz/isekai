@@ -6,6 +6,7 @@ from django.core.files.base import ContentFile
 from django.db.models import Model
 from django.utils import timezone
 from freezegun import freeze_time
+from wagtail.documents.models import Document
 from wagtail.images.models import Image
 
 from isekai.loaders import ModelLoader
@@ -104,8 +105,6 @@ class TestModelLoader:
         )
 
         objects = loader.load([(key, spec)], resolver)
-
-        from wagtail.documents.models import Document
 
         document = objects[0][1]
         assert isinstance(document, Document)

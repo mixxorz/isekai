@@ -34,7 +34,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='Resource',
             fields=[
-                ('key', models.CharField(db_index=True, max_length=255, primary_key=True, serialize=False)),
+                ('key', models.CharField(db_index=True, max_length=768, primary_key=True, serialize=False)),
                 ('mime_type', models.CharField(blank=True, max_length=100)),
                 ('data_type', models.CharField(blank=True, choices=[('text', 'Text'), ('blob', 'Blob')], max_length=10)),
                 ('blob_data', models.FileField(blank=True, null=True, upload_to='resource_blobs/')),

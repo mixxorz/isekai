@@ -12,7 +12,7 @@
 
 ## File Structure
 
-- Modify: `isekai/models.py` — increase `AbstractResource.key.max_length` to 1024.
+- Modify: `isekai/models.py` — increase `AbstractResource.key.max_length` to 768 for a MySQL-compatible URL-friendly default.
 - Modify: `tests/test_models.py` — add a regression test for the default concrete resource key field length.
 - Modify: `docs/tutorial.md` — restructure the tutorial and update all examples/prose.
 - Reference only: `docs/superpowers/specs/2026-05-28-tutorial-production-restructure-design.md` — approved design; do not edit unless implementation reveals a spec error.
@@ -22,13 +22,15 @@
 
 - Keep imports at the top of Python examples. Do not introduce inline imports in tutorial code samples.
 - Do not recommend `pip install "isekai-django[wagtail]"`; use `pip install isekai-django`.
-- Do not tell readers to override `Resource.key` for normal URL migrations after the default changes to 1024.
+- Do not tell readers to override `Resource.key` for normal URL migrations after the default changes to 768.
 - Keep the Cairngorm scenario. Do not rewrite the tutorial as a MAP news migration.
 - Advanced patterns should be callouts or optional sections, not a second full tutorial track.
 
 ---
 
 ### Task 1: Increase Default Resource Key Length
+
+Use `768` as the new default because it remains URL-friendly while fitting common MySQL/InnoDB utf8mb4 primary-key index limits.
 
 **Files:**
 - Modify: `tests/test_models.py`
@@ -42,7 +44,7 @@ Add this test inside `TestAbstractResource` in `tests/test_models.py`, after `te
     def test_key_field_defaults_to_url_friendly_length(self):
         """Resource keys should be long enough for real migrated URLs."""
         key_field = ConcreteResource._meta.get_field("key")
-        assert key_field.max_length == 1024
+        assert key_field.max_length == 768
 ```
 
 - [ ] **Step 2: Run the focused test and verify it fails**
@@ -60,7 +62,7 @@ Expected: FAIL because `key_field.max_length` is currently `255`.
 In `isekai/models.py`, change the `AbstractResource.key` field to:
 
 ```python
-    key = models.CharField(max_length=1024, primary_key=True, db_index=True)
+    key = models.CharField(max_length=768, primary_key=True, db_index=True)
 ```
 
 - [ ] **Step 4: Run the focused test and verify it passes**
@@ -268,12 +270,12 @@ at image URLs.
 
 - [ ] **Step 4: Remove any custom key override guidance**
 
-Search within `docs/tutorial.md` for `max_length=1024`, `key = models.CharField`, or guidance about overriding `Resource.key`. The tutorial should not recommend overriding it for normal URL-heavy migrations after Task 1.
+Search within `docs/tutorial.md` for `max_length=768`, `key = models.CharField`, or guidance about overriding `Resource.key`. The tutorial should not recommend overriding it for normal URL-heavy migrations after Task 1.
 
 Run:
 
 ```bash
-rg "max_length=1024|key = models.CharField|override.*key|Resource.key" docs/tutorial.md
+rg "max_length=768|key = models.CharField|override.*key|Resource.key" docs/tutorial.md
 ```
 
 Expected: no recommendation to override `Resource.key` for normal URL migrations. It is acceptable if the tutorial mentions that isekai's default resource keys are long enough for URL migrations.

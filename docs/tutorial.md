@@ -35,17 +35,16 @@ LOADED** — and where a failed or interrupted run can always pick up from
 where it stopped.
 
 In this tutorial we'll build a real migration: moving 260 case study pages
-from the Cairngorm Foundation website into a new Wagtail site, complete with
-hero images, body images, categories, and fund names. By the end you'll have
-a pipeline that handles all of that — and if it stops halfway through, you
-can run it again and it'll skip everything that already worked.
+from the Cairngorm Foundation website into a new Wagtail site. By the end
+you'll have a pipeline that handles the page content, hero images, body images
+where present, categories, and fund names — and if it stops halfway through,
+you can run it again and it'll skip everything that already worked.
 
 ## Prerequisites
 
 - A working Django + Wagtail project
 - Python 3.10+
-- isekai installed: `pip install isekai-django[wagtail]`
-- BeautifulSoup4 installed: `pip install beautifulsoup4`
+- isekai installed: `pip install isekai-django`
 
 ## Step 0: Planning — Understand the data before you write a line
 
@@ -104,6 +103,7 @@ Inspect one page manually and list what you can extract:
 - **Hero image** — from `<figure class="wide"> img`
 - **Introduction** — from `<p class="text-lead">` (newer pages only)
 - **Body sections** — from `<p class="red-brown">` headings inside `<div class="editor">`
+- **Body images** — from images inside `<div class="editor">`
 
 Older pages have a simpler flat structure with no introduction or sections.
 Your parser needs to handle both gracefully — we'll come back to that in
@@ -120,6 +120,7 @@ looks like:
 from django.db import models
 from wagtail import blocks
 from wagtail.fields import RichTextField, StreamField
+from wagtail.images.blocks import ImageChooserBlock
 from wagtail.models import Page
 
 
@@ -135,7 +136,18 @@ class CaseStudyPage(Page):
     )
     introduction = RichTextField(blank=True)
     body = StreamField(
-        [("section", blocks.RichTextBlock())],
+        [
+            ("section", blocks.RichTextBlock()),
+            (
+                "image",
+                blocks.StructBlock(
+                    [
+                        ("image", ImageChooserBlock()),
+                        ("caption", blocks.CharBlock(required=False)),
+                    ]
+                ),
+            ),
+        ],
         blank=True,
         use_json_field=True,
     )
@@ -155,9 +167,11 @@ class CaseStudyPage(Page):
 This is the destination. Everything the pipeline does — fetching, parsing,
 downloading images — is in service of populating these fields.
 
-The `body` StreamField uses `RichTextBlock` for each section, which
-preserves the HTML from the source page. The `hero_image` FK points at
-Wagtail's built-in `Image` model — isekai will create those `Image` objects
+The `body` StreamField has one block for rich text sections and one for images.
+That matters: body images should become Wagtail image references, not old
+`<img src="...">` tags pointing back at the source site. We'll wire those image
+blocks in when we build the transformer in Step 7. The `hero_image` FK points
+at Wagtail's built-in `Image` model — isekai will create those `Image` objects
 automatically when it processes the mined image resources.
 
 Find the parent page ID in the Wagtail admin by navigating to the page you
@@ -236,18 +250,37 @@ class Resource(AbstractResource):
         verbose_name_plural = "Resources"
 ```
 
-Each list is a set of processors for that pipeline stage:
+You can also register the resource model in the Django admin:
 
-- **seeders** — generate the initial list of resource keys (URLs to migrate)
-- **extractors** — fetch raw data for each resource (HTTP requests)
-- **miners** — discover related resources from extracted content (images)
-- **transformers** — convert extracted content into a `Spec` describing what Django model to create
-- **loaders** — write the `Spec` to the database
+```python
+# tutorial/admin.py
+from django.contrib import admin
 
-When a stage has multiple processors, isekai tries them in order and uses
-the first one that returns a result. This is how `ImageTransformer` and
-`CaseStudyTransformer` coexist: each handles a different type of resource
-and returns `None` for the other.
+from isekai.admin import AbstractResourceAdmin
+
+from tutorial.models import Resource
+
+
+@admin.register(Resource)
+class ResourceAdmin(AbstractResourceAdmin):
+    pass
+```
+
+This is not required for the pipeline, but it is useful during a migration.
+The admin shows each resource's status and `last_error`, which makes failed
+runs much easier to inspect.
+
+Processor ordering depends on the stage:
+
+- Seeders all run.
+- Miners all run.
+- Extractors are tried in order until one returns a resource.
+- Transformers are tried in order until one returns a `Spec`.
+- Loaders are tried in order until one returns created objects for the current load node.
+
+That is why specific extractors go before generic extractors. If you add a
+custom image extractor, put it before `HTTPExtractor()` so it gets first chance
+at image URLs.
 
 ## Step 3: Seeding — building the list of what to migrate
 
@@ -316,6 +349,77 @@ extractors = [HTTPExtractor()]
 That one line handles fetching all 260 case study HTML pages and, later
 in the pipeline, all the image files the miner discovers.
 
+### Optional: Falling back when image originals 404
+
+Some sites reference image originals that no longer exist, while cropped or
+resized variants still return successfully. In that case, put the fallback
+logic in a specific image extractor and leave `HTTPExtractor` as the generic
+default:
+
+```python
+# tutorial/extractors.py
+import re
+
+import requests
+
+from isekai.extractors import HTTPExtractor
+from isekai.types import Key
+
+
+class CaseStudyImageExtractor(HTTPExtractor):
+    def extract(self, key: Key, metadata: dict | None = None):
+        if key.type != "url" or not self._is_image_url(key.value):
+            return None
+
+        try:
+            return super().extract(key, metadata)
+        except requests.exceptions.HTTPError as error:
+            if error.response is None or error.response.status_code != 404:
+                raise
+            original_error = error
+
+        for fallback_url in self._fallback_urls(key.value, metadata or {}):
+            try:
+                return super().extract(Key(type="url", value=fallback_url), metadata)
+            except requests.exceptions.HTTPError:
+                continue
+
+        raise original_error
+
+    def _is_image_url(self, url: str) -> bool:
+        return url.lower().endswith((".jpg", ".jpeg", ".png", ".gif", ".webp"))
+
+    def _fallback_urls(self, url: str, metadata: dict) -> list[str]:
+        urls = []
+        original_src = metadata.get("original_src")
+        if original_src and original_src != url:
+            urls.append(original_src)
+        urls.append(self._with_suffix(url, "_cropped"))
+        urls.append(self._with_suffix(url, "_778_518"))
+        return urls
+
+    def _with_suffix(self, url: str, suffix: str) -> str:
+        return re.sub(r"(\.[^.]+)$", rf"{suffix}\1", url)
+```
+
+Do not copy these suffixes blindly. They are examples of the kind of fallback
+you might need after inspecting your source site. The important pattern is to
+mine one canonical key, keep the original URL in metadata, and let a specific
+image extractor try known fallbacks before the generic `HTTPExtractor` runs.
+
+Wire the custom extractor before the generic one:
+
+```python
+extractors = [
+    CaseStudyImageExtractor(max_retries=8, max_delay=300),
+    HTTPExtractor(max_retries=8, max_delay=300),
+]
+```
+
+The order matters because extractors are tried in order. Put the custom image
+extractor first so it gets a chance to handle image URLs and try fallbacks;
+everything else can continue through `HTTPExtractor`.
+
 ## Step 5: Parsing — understanding the HTML before wiring it in
 
 Before connecting any parser to the pipeline, write and test it against
@@ -343,11 +447,14 @@ Now write the parser:
 
 ```python
 # tutorial/parsers.py
+import re
+from urllib.parse import urljoin
+
 from bs4 import BeautifulSoup, Tag
 
 
 class CaseStudyParser:
-    """Extracts structured data from a Foundation Scotland case study HTML page."""
+    """Extracts structured data from a Cairngorm Foundation case study HTML page."""
 
     def __init__(self, html: str):
         self.soup = BeautifulSoup(html, "html.parser")
@@ -376,7 +483,17 @@ class CaseStudyParser:
                         return link.get_text(strip=True)
         return None
 
-    def get_hero_image_url(self) -> str | None:
+    def normalize_image_url(self, src: str, base_url: str) -> tuple[str, str]:
+        """Return (canonical_url, original_url) for an image src."""
+        original_url = urljoin(base_url, src)
+        canonical_url = original_url
+        canonical_url = canonical_url.replace("_cropped", "")
+        canonical_url = re.sub(r"__width-\d+(\.[^.]+)$", r"\1", canonical_url)
+        canonical_url = re.sub(r"_\d+_\d+(\.[^.]+)$", r"\1", canonical_url)
+        canonical_url = re.sub(r"-\d+x\d+(\.[^.]+)$", r"\1", canonical_url)
+        return canonical_url, original_url
+
+    def get_hero_image(self, base_url: str) -> dict[str, str] | None:
         hero_fig = self.soup.find("figure", class_="wide")
         if hero_fig is None:
             return None
@@ -384,7 +501,15 @@ class CaseStudyParser:
         if img is None:
             return None
         src = img.get("src")
-        return str(src) if src else None
+        if not src:
+            return None
+        url, original_url = self.normalize_image_url(str(src), base_url)
+        return {
+            "url": url,
+            "original_src": original_url,
+            "alt_text": str(img.get("alt", "")),
+            "caption": "",
+        }
 
     def get_introduction(self) -> str:
         tag = self.soup.find("p", class_="text-lead")
@@ -430,15 +555,22 @@ class CaseStudyParser:
 
         return sections
 
-    def get_body_image_urls(self) -> list[str]:
-        """Returns image src values found inside div.editor (body content, not hero)."""
-        urls = []
+    def get_body_images(self, base_url: str) -> list[dict[str, str]]:
+        images = []
         for div in self.soup.find_all("div", class_="editor"):
             for img in div.find_all("img"):
                 src = img.get("src")
                 if src:
-                    urls.append(str(src))
-        return urls
+                    url, original_url = self.normalize_image_url(str(src), base_url)
+                    images.append(
+                        {
+                            "url": url,
+                            "original_src": original_url,
+                            "alt_text": str(img.get("alt", "")),
+                            "caption": "",
+                        }
+                    )
+        return images
 ```
 
 A few things worth noting:
@@ -450,7 +582,12 @@ A few things worth noting:
   simply doesn't exist on those pages
 - `get_body_sections()` checks for `red-brown` *without* `text-lead` to
   exclude the intro paragraph, which on newer pages carries both classes
-- `get_body_image_urls()` only looks inside `div.editor`, not the entire
+- `get_hero_image(base_url)` and `get_body_images(base_url)` normalize
+  image URLs to canonical resource keys
+- `original_src` keeps the absolute, unnormalized source URL so fallback
+  extractors can try the URL that appeared in the page after resolving it
+  against the page URL
+- `get_body_images(base_url)` only looks inside `div.editor`, not the entire
   document, so the hero image isn't double-counted
 
 Write tests against each fixture:
@@ -462,6 +599,7 @@ from pathlib import Path
 from tutorial.parsers import CaseStudyParser
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "case_studies"
+PAGE_URL = "https://cairngormfoundation.org.uk/our-impact/case-studies/reopening-crosswater/"
 
 
 def load_fixture(filename: str) -> CaseStudyParser:
@@ -487,9 +625,19 @@ class TestCaseStudyParserFixture01:
     def test_get_body_sections_count(self):
         assert len(self.parser.get_body_sections()) == 4
 
-    def test_get_body_image_urls(self):
-        urls = self.parser.get_body_image_urls()
-        assert len(urls) == 2
+    def test_get_hero_image(self):
+        hero_image = self.parser.get_hero_image(PAGE_URL)
+        assert hero_image is not None
+        assert hero_image["url"].startswith("https://cairngormfoundation.org.uk/")
+        assert hero_image["original_src"].startswith(
+            "https://cairngormfoundation.org.uk/"
+        )
+        assert "alt_text" in hero_image
+
+    def test_get_body_images(self):
+        images = self.parser.get_body_images(PAGE_URL)
+        assert len(images) == 2
+        assert images[0]["url"].startswith("https://cairngormfoundation.org.uk/")
 
 # ... and so on for fixtures 02–05
 ```
@@ -506,6 +654,53 @@ pytest tutorial/tests/test_parser.py -v
 
 All tests should pass. Fix any selector mismatches before moving on —
 getting this right now means your pipeline will work without surprises.
+
+Tests tell you whether expected selectors still work. A report tells you
+whether the parsed output looks sane across real fixture pages. Use both before
+running the full pipeline.
+
+An optional report command can print a compact summary for every fixture:
+
+```python
+# tutorial/management/commands/report_case_study_fixtures.py
+from pathlib import Path
+
+from django.core.management.base import BaseCommand
+
+from tutorial.parsers import CaseStudyParser
+
+
+class Command(BaseCommand):
+    help = "Print parsed case study fixture summaries"
+
+    def handle(self, *args, **options):
+        fixtures_dir = Path("tutorial/tests/fixtures/case_studies")
+
+        for fixture_path in sorted(fixtures_dir.glob("*.html")):
+            parser = CaseStudyParser(fixture_path.read_text(encoding="utf-8"))
+            base_url = "https://cairngormfoundation.org.uk/"
+            hero_image = parser.get_hero_image(base_url)
+            introduction = parser.get_introduction()
+
+            self.stdout.write(f"\n{fixture_path.name}")
+            self.stdout.write(f"  title: {parser.get_title() or '(missing)'}")
+            self.stdout.write(f"  category: {parser.get_category() or '(missing)'}")
+            self.stdout.write(f"  fund: {parser.get_fund_name() or '(missing)'}")
+            self.stdout.write(f"  hero image: {'yes' if hero_image else 'no'}")
+            self.stdout.write(f"  introduction: {'yes' if introduction else 'no'}")
+            self.stdout.write(f"  sections: {len(parser.get_body_sections())}")
+            self.stdout.write(f"  body images: {len(parser.get_body_images(base_url))}")
+```
+
+Checkpoint:
+
+```bash
+python manage.py report_case_study_fixtures
+```
+
+In the real miner and transformer, use the full page URL as `base_url`. The
+site root is enough for this summary command because Cairngorm image paths are
+root-relative or absolute, and the command only reports counts.
 
 ## Step 6: Mining — discovering what the pages reference
 
@@ -536,14 +731,31 @@ class CaseStudyMiner(BaseMiner):
 
         parser = CaseStudyParser(resource.text)
         mined: list[MinedResource] = []
+        base_url = key.value
 
-        hero_url = parser.get_hero_image_url()
-        if hero_url:
-            mined.append(MinedResource(key=Key(type="url", value=hero_url), metadata={}))
-
-        for image_url in parser.get_body_image_urls():
+        hero_image = parser.get_hero_image(base_url)
+        if hero_image:
             mined.append(
-                MinedResource(key=Key(type="url", value=image_url), metadata={})
+                MinedResource(
+                    key=Key(type="url", value=hero_image["url"]),
+                    metadata={
+                        "alt_text": hero_image["alt_text"],
+                        "caption": hero_image["caption"],
+                        "original_src": hero_image["original_src"],
+                    },
+                )
+            )
+
+        for image in parser.get_body_images(base_url):
+            mined.append(
+                MinedResource(
+                    key=Key(type="url", value=image["url"]),
+                    metadata={
+                        "alt_text": image["alt_text"],
+                        "caption": image["caption"],
+                        "original_src": image["original_src"],
+                    },
+                )
             )
 
         return mined
@@ -553,6 +765,18 @@ class CaseStudyMiner(BaseMiner):
     If the miner emits the same `url:` key more than once, isekai still creates
     only one Resource row. Resource keys are primary keys, and the pipeline
     ignores conflicts when saving newly mined resources.
+
+    Isekai deduplicates exact resource keys for you. Normalization is different:
+    it is how you make several source URL strings point at the same canonical key
+    before they reach the database.
+
+    One caveat: when several image variants normalize to the same resource key,
+    only one `Resource` row is created, so only the metadata from the first
+    created row is kept. `original_src` gives the extractor the first
+    unnormalized URL we saw. If your source site needs several fallback
+    candidates per image, derive those variants in the extractor from the
+    canonical URL, or collect the candidates in the miner before emitting one
+    resource.
 
 !!! warning "Image URLs are often variants, not originals"
     Many CMSes serve images through a resizing or cropping layer. The URL
@@ -583,6 +807,42 @@ class Resource(AbstractResource):
     miners = [CaseStudyMiner()]
 ```
 
+!!! note "Not every mined resource needs HTTP"
+    Sometimes a page reveals objects that do not need to be fetched: tags,
+    categories, embedded forms, or other snippets. You can still mine them as
+    resources with keys like `tag:community-funds` or `form:donate-now`. Because
+    the pipeline expects every resource to pass through extraction, pair those keys
+    with a no-op extractor that creates a placeholder `TextResource` while
+    preserving metadata.
+
+    ```python
+    # tutorial/extractors.py
+    from isekai.extractors import BaseExtractor
+    from isekai.types import Key, TextResource
+
+
+    class NoopExtractor(BaseExtractor):
+        def extract(self, key: Key, metadata: dict | None = None) -> TextResource | None:
+            if key.type not in {"tag", "form", "category"}:
+                return None
+
+            return TextResource(
+                mime_type="text/plain",
+                text=str(key),
+                metadata=metadata or {},
+            )
+    ```
+
+    Put `NoopExtractor()` before `HTTPExtractor()`. Otherwise `HTTPExtractor` will
+    see a non-URL key, return `None`, and the no-op extractor still works, but
+    specific-first ordering keeps the configuration easier to read.
+
+    These resources still advance through mining, extraction, transformation, and
+    loading like any other resource, so they also need a matching transformer later.
+    Without one, transform fails because no transformer handles `tag:`, `form:`, or
+    `category:` resources. This pattern is optional and outside the scope of the
+    main Cairngorm migration built in this tutorial.
+
 ## Step 7: Transforming — mapping content to a model description
 
 A transformer reads an extracted resource and returns a `Spec` — a
@@ -593,15 +853,40 @@ describes the object. The loader (Step 8) does the actual creating.
 ```python
 # tutorial/transformers.py
 from django.conf import settings
+from wagtail.admin.rich_text.converters.editor_html import EditorHTMLConverter
 
 from isekai.transformers import BaseTransformer
-from isekai.types import BlobRef, BlobResource, Key, Spec, TextResource
+from isekai.types import BlobResource, Key, ResourceRef, Spec, TextResource
 
 from tutorial.parsers import CaseStudyParser
 
 
 class CaseStudyTransformer(BaseTransformer):
     """Transforms an extracted case study HTML page into a CaseStudyPage Spec."""
+
+    def build_body_blocks(
+        self, parser: CaseStudyParser, base_url: str, converter: EditorHTMLConverter
+    ) -> list[dict[str, object]]:
+        blocks: list[dict[str, object]] = []
+
+        for section in parser.get_body_sections():
+            blocks.append(
+                {"type": "section", "value": converter.to_database_format(section)}
+            )
+
+        for image in parser.get_body_images(base_url):
+            image_key = Key(type="url", value=image["url"])
+            blocks.append(
+                {
+                    "type": "image",
+                    "value": {
+                        "image": ResourceRef(image_key).pk,
+                        "caption": image["caption"],
+                    },
+                }
+            )
+
+        return blocks
 
     def transform(self, key: Key, resource: TextResource | BlobResource) -> Spec | None:
         if key.type != "url":
@@ -614,21 +899,22 @@ class CaseStudyTransformer(BaseTransformer):
         if not title:
             return None
 
+        converter = EditorHTMLConverter()
+        base_url = key.value
+
         attributes: dict = {
             "title": title,
             "category": parser.get_category(),
             "fund_name": parser.get_fund_name() or "",
-            "introduction": parser.get_introduction(),
-            "body": [
-                {"type": "section", "value": section}
-                for section in parser.get_body_sections()
-            ],
+            "introduction": converter.to_database_format(parser.get_introduction()),
+            "body": self.build_body_blocks(parser, base_url, converter),
             "__wagtail_parent_page": settings.CASE_STUDIES_PARENT_PAGE_ID,
         }
 
-        hero_url = parser.get_hero_image_url()
-        if hero_url:
-            attributes["hero_image"] = BlobRef(Key(type="url", value=hero_url))
+        hero_image = parser.get_hero_image(base_url)
+        if hero_image:
+            hero_key = Key(type="url", value=hero_image["url"])
+            attributes["hero_image_id"] = ResourceRef(hero_key).pk
 
         return Spec(
             content_type="tutorial.casestudypage",
@@ -636,7 +922,7 @@ class CaseStudyTransformer(BaseTransformer):
         )
 ```
 
-Three things worth understanding here:
+A few things are worth understanding here:
 
 **`content_type="tutorial.casestudypage"`** tells the loader which Django
 model to instantiate. It's the app label plus the model name, lowercased —
@@ -647,14 +933,32 @@ to know where in the Wagtail page tree to attach the new page. It's removed
 before Django sees the attributes, so it won't cause an "unexpected field"
 error.
 
-**`BlobRef(Key(type="url", value=hero_url))`** deserves a closer look:
+**`build_body_blocks()`** appends image blocks after section blocks because this
+simple parser extracts body sections and body images separately. If preserving
+the exact source order matters, parse the body as an ordered sequence of blocks
+instead. The body image blocks use `ResourceRef(image_key).pk` because Wagtail
+image chooser blocks store image IDs in raw StreamField data.
 
-!!! warning "BlobRef is lazy — the image doesn't need to exist yet"
-    `BlobRef` is a *reference*, not a value. It says "when you load this
-    page, set `hero_image` to whatever Wagtail `Image` was created from this
+**`ResourceRef(hero_key).pk`** deserves a closer look:
+
+!!! warning "References are lazy — images don't need to exist yet"
+    `ResourceRef` is a *reference*, not a value. It says "when you load this
+    page, set this field to whatever Wagtail `Image` was created from this
     URL." The loader resolves it at load time, after the image has been
     extracted and transformed. You don't need the image to exist when you
     return this `Spec` — isekai handles the ordering for you.
+
+    `ResourceRef` and `ModelRef` both support lazy dot notation.
+    `ResourceRef(hero_key)` resolves to the object created from that resource.
+    `ResourceRef(hero_key).pk` resolves to the eventual primary key.
+    `ModelRef("images.CustomImage", pk=1).file.url` looks up an existing model
+    and resolves the requested attribute path at load time.
+
+!!! note "Refs are validated during transform"
+    Isekai checks refs during transform. If this transformer returns a
+    `ResourceRef` for a key that was never seeded or mined, transform fails
+    with an invalid-ref error. That is why the miner and transformer must use
+    the same normalized URL.
 
 ## Step 8: Running the pipeline
 
@@ -722,16 +1026,50 @@ keyboard interrupt — run it again. Isekai skips resources that have
 already moved past a stage, so nothing gets re-fetched or re-processed.
 
 Open the Wagtail admin and navigate to the parent page. You should find
-all 260 case study pages nested beneath it, each with title, category,
-fund name, hero image, introduction, and body sections populated.
+all 260 case study pages nested beneath it, each with title and category
+populated. Newer pages will also have hero images, introductions, and body
+sections where the source page provided them.
+
+## Troubleshooting a real run
+
+### Find failed resources with a shell query
+
+```bash
+python manage.py shell -c "from tutorial.models import Resource; print(list(Resource.objects.exclude(last_error='').values('key', 'status', 'last_error')))"
+```
+
+The ORM expression is:
+
+```python
+Resource.objects.exclude(last_error="").values("key", "status", "last_error")
+```
+
+### Invalid refs during transform
+
+This means a transformer referenced a resource key that was never seeded or mined.
+Check that the miner and transformer use the same normalized URL.
+
+### Images that 404
+
+If the image is optional, leave the reference out. If the source site has known
+fallback patterns, add a specific image extractor before `HTTPExtractor()`.
+
+### Missing parent page
+
+If `PageLoader` cannot find `CASE_STUDIES_PARENT_PAGE_ID`, check the ID in the
+Wagtail admin and make sure the setting is available to Django.
+
+### Unknown content type
+
+Use the lowercased `app_label.modelname` form, such as `tutorial.casestudypage`.
 
 ## What you built
 
 You started with a deadline and a blank file. Now 260 case studies are
-in Wagtail — titles, categories, fund names, hero images, body sections,
-all of it. The pipeline handled the ordering, the retries, the inconsistent
-HTML structure across older and newer pages. You described what each stage
-should do; isekai did the coordination.
+in Wagtail — titles, categories, fund names where present, hero images,
+body sections and images. The pipeline handled the ordering, the restarts,
+the inconsistent HTML structure across older and newer pages. You described
+what each stage should do; isekai did the coordination.
 
 !!! success "What we learned"
     - **Understand the shape of your data before writing any code.** Five

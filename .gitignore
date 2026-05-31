@@ -177,6 +177,9 @@ uv.lock
 scratch.py
 scc/
 
+# worktrees
+.worktrees/
+
 # dev environment
 dev/
 resource_blobs/
